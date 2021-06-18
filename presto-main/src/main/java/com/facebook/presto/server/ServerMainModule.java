@@ -20,6 +20,7 @@ import com.facebook.airlift.json.JsonObjectMapperProvider;
 import com.facebook.airlift.stats.GcMonitor;
 import com.facebook.airlift.stats.JmxGcMonitor;
 import com.facebook.airlift.stats.PauseMeter;
+import com.facebook.drift.client.ExceptionClassification;
 import com.facebook.drift.client.address.AddressSelector;
 import com.facebook.drift.codec.utils.DefaultThriftCodecsModule;
 import com.facebook.drift.transport.netty.client.DriftNettyClientModule;
@@ -112,10 +113,14 @@ import com.facebook.presto.operator.index.IndexJoinLookupStats;
 import com.facebook.presto.resourcemanager.ClusterMemoryManagerService;
 import com.facebook.presto.resourcemanager.ClusterStatusSender;
 import com.facebook.presto.resourcemanager.ForResourceManager;
+import com.facebook.presto.resourcemanager.NoopResourceGroupService;
 import com.facebook.presto.resourcemanager.RandomResourceManagerAddressSelector;
+import com.facebook.presto.resourcemanager.ResourceGroupService;
 import com.facebook.presto.resourcemanager.ResourceManagerClient;
 import com.facebook.presto.resourcemanager.ResourceManagerClusterStatusSender;
 import com.facebook.presto.resourcemanager.ResourceManagerConfig;
+import com.facebook.presto.resourcemanager.ResourceManagerInconsistentException;
+import com.facebook.presto.resourcemanager.ResourceManagerResourceGroupService;
 import com.facebook.presto.server.remotetask.HttpLocationFactory;
 import com.facebook.presto.server.thrift.FixedAddressSelector;
 import com.facebook.presto.server.thrift.ThriftServerInfoClient;
@@ -196,6 +201,7 @@ import javax.inject.Singleton;
 import javax.servlet.Servlet;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
@@ -211,6 +217,8 @@ import static com.facebook.airlift.jaxrs.JaxrsBinder.jaxrsBinder;
 import static com.facebook.airlift.json.JsonBinder.jsonBinder;
 import static com.facebook.airlift.json.JsonCodecBinder.jsonCodecBinder;
 import static com.facebook.airlift.json.smile.SmileCodecBinder.smileCodecBinder;
+import static com.facebook.drift.client.ExceptionClassification.HostStatus.DOWN;
+import static com.facebook.drift.client.ExceptionClassification.HostStatus.NORMAL;
 import static com.facebook.drift.client.guice.DriftClientBinder.driftClientBinder;
 import static com.facebook.drift.codec.guice.ThriftCodecBinder.thriftCodecBinder;
 import static com.facebook.drift.server.guice.DriftServerBinder.driftServerBinder;
@@ -350,7 +358,13 @@ public class ServerMainModule
         driftClientBinder(binder)
                 .bindDriftClient(ResourceManagerClient.class, ForResourceManager.class)
                 .withAddressSelector((addressSelectorBinder, annotation, prefix) ->
-                        addressSelectorBinder.bind(AddressSelector.class).annotatedWith(annotation).to(RandomResourceManagerAddressSelector.class));
+                        addressSelectorBinder.bind(AddressSelector.class).annotatedWith(annotation).to(RandomResourceManagerAddressSelector.class))
+                .withExceptionClassifier(throwable -> {
+                    if (throwable instanceof ResourceManagerInconsistentException) {
+                        return new ExceptionClassification(Optional.of(true), DOWN);
+                    }
+                    return new ExceptionClassification(Optional.of(true), NORMAL);
+                });
         newOptionalBinder(binder, ClusterMemoryManagerService.class);
         install(installModuleIf(
                 ServerConfig.class,
@@ -364,6 +378,7 @@ public class ServerMainModule
                         moduleBinder.bind(ClusterStatusSender.class).to(ResourceManagerClusterStatusSender.class).in(Scopes.SINGLETON);
                         if (serverConfig.isCoordinator()) {
                             moduleBinder.bind(ClusterMemoryManagerService.class).in(Scopes.SINGLETON);
+                            moduleBinder.bind(ResourceGroupService.class).to(ResourceManagerResourceGroupService.class).in(Scopes.SINGLETON);
                         }
                     }
 
@@ -390,7 +405,10 @@ public class ServerMainModule
                         return listeningDecorator(executor);
                     }
                 },
-                moduleBinder -> moduleBinder.bind(ClusterStatusSender.class).toInstance(execution -> {})));
+                moduleBinder -> {
+                    moduleBinder.bind(ClusterStatusSender.class).toInstance(execution -> {});
+                    moduleBinder.bind(ResourceGroupService.class).to(NoopResourceGroupService.class).in(Scopes.SINGLETON);
+                }));
 
         FeaturesConfig featuresConfig = buildConfigObject(FeaturesConfig.class);
         FeaturesConfig.TaskSpillingStrategy taskSpillingStrategy = featuresConfig.getTaskSpillingStrategy();
