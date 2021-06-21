@@ -66,10 +66,12 @@ import com.facebook.presto.sql.planner.plan.IndexJoinNode;
 import com.facebook.presto.sql.planner.plan.IndexSourceNode;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.LateralJoinNode;
+import com.facebook.presto.sql.planner.plan.OffsetNode;
 import com.facebook.presto.sql.planner.plan.OutputNode;
 import com.facebook.presto.sql.planner.plan.RowNumberNode;
 import com.facebook.presto.sql.planner.plan.SampleNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
+import com.facebook.presto.sql.planner.plan.SortNode;
 import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
 import com.facebook.presto.sql.planner.plan.UnnestNode;
@@ -236,6 +238,19 @@ public class PlanBuilder
     public EnforceSingleRowNode enforceSingleRow(PlanNode source)
     {
         return new EnforceSingleRowNode(idAllocator.getNextId(), source);
+    }
+
+    public SortNode sort(List<VariableReferenceExpression> orderBy, PlanNode source)
+    {
+        return new SortNode(
+                idAllocator.getNextId(),
+                source,
+                new OrderingScheme(orderBy.stream().map(variable -> new Ordering(variable, SortOrder.ASC_NULLS_FIRST)).collect(toImmutableList())),
+                false);
+    }
+    public OffsetNode offset(long rowCount, PlanNode source)
+    {
+        return new OffsetNode(idAllocator.getNextId(), source, rowCount);
     }
 
     public LimitNode limit(long limit, PlanNode source)

@@ -23,7 +23,9 @@ import com.facebook.presto.spi.plan.ValuesNode;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType;
 import com.facebook.presto.sql.planner.assertions.BasePlanTest;
+import com.facebook.presto.sql.planner.assertions.ExpressionMatcher;
 import com.facebook.presto.sql.planner.assertions.PlanMatchPattern;
+import com.facebook.presto.sql.planner.assertions.RowNumberSymbolMatcher;
 import com.facebook.presto.sql.planner.optimizations.AddLocalExchanges;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
@@ -50,6 +52,7 @@ import static com.facebook.presto.SystemSessionProperties.DISTRIBUTED_SORT;
 import static com.facebook.presto.SystemSessionProperties.ENFORCE_FIXED_DISTRIBUTION_FOR_OUTPUT_OPERATOR;
 import static com.facebook.presto.SystemSessionProperties.FORCE_SINGLE_NODE_OUTPUT;
 import static com.facebook.presto.SystemSessionProperties.JOIN_DISTRIBUTION_TYPE;
+import static com.facebook.presto.SystemSessionProperties.OFFSET_CLAUSE_ENABLED;
 import static com.facebook.presto.SystemSessionProperties.OPTIMIZE_HASH_GENERATION;
 import static com.facebook.presto.SystemSessionProperties.OPTIMIZE_JOINS_WITH_EMPTY_SOURCES;
 import static com.facebook.presto.SystemSessionProperties.OPTIMIZE_NULLS_IN_JOINS;
@@ -86,6 +89,7 @@ import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.semiJo
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.singleGroupingSet;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.sort;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.specification;
+import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.strictProject;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.strictTableScan;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.tableScan;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.topN;
@@ -104,6 +108,7 @@ import static com.facebook.presto.sql.planner.plan.JoinNode.Type.INNER;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.LEFT;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.RIGHT;
 import static com.facebook.presto.sql.tree.SortItem.NullOrdering.LAST;
+import static com.facebook.presto.sql.tree.SortItem.Ordering.ASCENDING;
 import static com.facebook.presto.sql.tree.SortItem.Ordering.DESCENDING;
 import static com.facebook.presto.tests.QueryTemplate.queryTemplate;
 import static com.facebook.presto.util.MorePredicates.isInstanceOfAny;
@@ -1328,5 +1333,44 @@ public class TestLogicalPlanner
                                                                         .partial(true),
 
                                                                 project(tableScan("orders", ImmutableMap.of("orderstatus", "orderstatus", "custkey", "custkey"))))))))));
+    }
+
+    @Test
+    public void testOffset()
+    {
+        Session enableOffset = Session.builder(this.getQueryRunner().getDefaultSession())
+                .setSystemProperty(OFFSET_CLAUSE_ENABLED, "true")
+                .build();
+        assertPlanWithSession("SELECT name FROM nation OFFSET 2 ROWS",
+                enableOffset,
+                true,
+                any(
+                        strictProject(
+                                ImmutableMap.of("name", new ExpressionMatcher("name")),
+                                filter(
+                                        "(row_num > BIGINT '2')",
+                                        rowNumber(
+                                                pattern -> pattern
+                                                        .partitionBy(ImmutableList.of()),
+                                                any(
+                                                        tableScan("nation", ImmutableMap.of("NAME", "name"))))
+                                                .withAlias("row_num", new RowNumberSymbolMatcher())))));
+        assertPlanWithSession("SELECT name FROM nation ORDER BY regionkey OFFSET 2 ROWS",
+                enableOffset,
+                true,
+                any(
+                        strictProject(
+                                ImmutableMap.of("name", new ExpressionMatcher("name")),
+                                filter(
+                                        "row_num > BIGINT '2'",
+                                        rowNumber(
+                                                pattern -> pattern
+                                                        .partitionBy(ImmutableList.of()),
+                                                anyTree(
+                                                        sort(
+                                                                ImmutableList.of(sort("regionkey", ASCENDING, LAST)),
+                                                                any(
+                                                                        tableScan("nation", ImmutableMap.of("name", "name", "regionkey", "regionkey"))))))
+                                                .withAlias("row_num", new RowNumberSymbolMatcher())))));
     }
 }
