@@ -18,6 +18,7 @@ import com.facebook.airlift.configuration.testing.ConfigAssertions;
 import com.facebook.presto.operator.aggregation.arrayagg.ArrayAggGroupImplementation;
 import com.facebook.presto.operator.aggregation.histogram.HistogramGroupImplementation;
 import com.facebook.presto.operator.aggregation.multimapagg.MultimapAggGroupImplementation;
+import com.facebook.presto.sql.analyzer.FeaturesConfig.PartialAggregationStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.PartitioningPrecisionStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.SingleStreamSpillerChoice;
 import com.google.common.collect.ImmutableMap;
@@ -131,6 +132,8 @@ public class TestFeaturesConfig
                 .setFilterAndProjectMinOutputPageRowCount(256)
                 .setUseMarkDistinct(true)
                 .setPreferPartialAggregation(true)
+                .setPartialAggregationStrategy(PartialAggregationStrategy.ALWAYS)
+                .setPartialAggregationByteReductionThreshold(0.5)
                 .setOptimizeTopNRowNumber(true)
                 .setHistogramGroupImplementation(HistogramGroupImplementation.NEW)
                 .setArrayAggGroupImplementation(ArrayAggGroupImplementation.NEW)
@@ -255,6 +258,8 @@ public class TestFeaturesConfig
                 .put("multimapagg.implementation", "LEGACY")
                 .put("optimizer.use-mark-distinct", "false")
                 .put("optimizer.prefer-partial-aggregation", "false")
+                .put("optimizer.partial-aggregation-strategy", "automatic")
+                .put("optimizer.partial-aggregation-byte-reduction-threshold", "0.8")
                 .put("optimizer.optimize-top-n-row-number", "false")
                 .put("distributed-sort", "false")
                 .put("analyzer.max-grouping-sets", "2047")
@@ -369,6 +374,8 @@ public class TestFeaturesConfig
                 .setFilterAndProjectMinOutputPageRowCount(2048)
                 .setUseMarkDistinct(false)
                 .setPreferPartialAggregation(false)
+                .setPartialAggregationStrategy(PartialAggregationStrategy.AUTOMATIC)
+                .setPartialAggregationByteReductionThreshold(0.8)
                 .setOptimizeTopNRowNumber(false)
                 .setHistogramGroupImplementation(HistogramGroupImplementation.LEGACY)
                 .setArrayAggGroupImplementation(ArrayAggGroupImplementation.LEGACY)

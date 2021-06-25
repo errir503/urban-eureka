@@ -28,6 +28,7 @@ import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartitioningMergingStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy;
+import com.facebook.presto.sql.analyzer.FeaturesConfig.PartialAggregationStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.PartialMergePushdownStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.PartitioningPrecisionStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.SingleStreamSpillerChoice;
@@ -56,6 +57,8 @@ import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionTy
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType.PARTITIONED;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy.ELIMINATE_CROSS_JOINS;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy.NONE;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.PartialAggregationStrategy.ALWAYS;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.PartialAggregationStrategy.NEVER;
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.lang.Math.min;
 import static java.lang.String.format;
@@ -140,6 +143,8 @@ public final class SystemSessionProperties
     public static final String DISTRIBUTED_SORT = "distributed_sort";
     public static final String USE_MARK_DISTINCT = "use_mark_distinct";
     public static final String PREFER_PARTIAL_AGGREGATION = "prefer_partial_aggregation";
+    public static final String PARTIAL_AGGREGATION_STRATEGY = "partial_aggregation_strategy";
+    public static final String PARTIAL_AGGREGATION_BYTE_REDUCTION_THRESHOLD = "partial_aggregation_byte_reduction_threshold";
     public static final String OPTIMIZE_TOP_N_ROW_NUMBER = "optimize_top_n_row_number";
     public static final String MAX_GROUPING_SETS = "max_grouping_sets";
     public static final String LEGACY_UNNEST = "legacy_unnest";
@@ -720,7 +725,24 @@ public final class SystemSessionProperties
                 booleanProperty(
                         PREFER_PARTIAL_AGGREGATION,
                         "Prefer splitting aggregations into partial and final stages",
-                        featuresConfig.isPreferPartialAggregation(),
+                        null,
+                        false),
+                new PropertyMetadata<>(
+                        PARTIAL_AGGREGATION_STRATEGY,
+                        format("Partial aggregation strategy to use. Options are %s",
+                                Stream.of(PartialAggregationStrategy.values())
+                                .map(PartialAggregationStrategy::name)
+                                .collect(joining(","))),
+                        VARCHAR,
+                        PartialAggregationStrategy.class,
+                        featuresConfig.getPartialAggregationStrategy(),
+                        false,
+                        value -> PartialAggregationStrategy.valueOf(((String) value).toUpperCase()),
+                        PartialAggregationStrategy::name),
+                doubleProperty(
+                        PARTIAL_AGGREGATION_BYTE_REDUCTION_THRESHOLD,
+                        "Byte reduction ratio threshold at which to disable partial aggregation",
+                        featuresConfig.getPartialAggregationByteReductionThreshold(),
                         false),
                 booleanProperty(
                         OPTIMIZE_TOP_N_ROW_NUMBER,
@@ -1442,9 +1464,21 @@ public final class SystemSessionProperties
         return session.getSystemProperty(USE_MARK_DISTINCT, Boolean.class);
     }
 
-    public static boolean preferPartialAggregation(Session session)
+    public static PartialAggregationStrategy getPartialAggregationStrategy(Session session)
     {
-        return session.getSystemProperty(PREFER_PARTIAL_AGGREGATION, Boolean.class);
+        Boolean preferPartialAggregation = session.getSystemProperty(PREFER_PARTIAL_AGGREGATION, Boolean.class);
+        if (preferPartialAggregation != null) {
+            if (preferPartialAggregation) {
+                return ALWAYS;
+            }
+            return NEVER;
+        }
+        return session.getSystemProperty(PARTIAL_AGGREGATION_STRATEGY, PartialAggregationStrategy.class);
+    }
+
+    public static double getPartialAggregationByteReductionThreshold(Session session)
+    {
+        return session.getSystemProperty(PARTIAL_AGGREGATION_BYTE_REDUCTION_THRESHOLD, Double.class);
     }
 
     public static boolean isOptimizeTopNRowNumber(Session session)

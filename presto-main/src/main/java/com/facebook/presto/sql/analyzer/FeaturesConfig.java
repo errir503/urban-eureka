@@ -143,6 +143,8 @@ public class FeaturesConfig
     private boolean parseDecimalLiteralsAsDouble;
     private boolean useMarkDistinct = true;
     private boolean preferPartialAggregation = true;
+    private PartialAggregationStrategy partialAggregationStrategy = PartialAggregationStrategy.ALWAYS;
+    private double partialAggregationByteReductionThreshold = 0.5;
     private boolean optimizeTopNRowNumber = true;
     private boolean pushLimitThroughOuterJoin = true;
 
@@ -264,6 +266,13 @@ public class FeaturesConfig
     {
         LOCAL_FILE,
         TEMP_STORAGE
+    }
+
+    public enum PartialAggregationStrategy
+    {
+        ALWAYS, // Always do partial aggregation
+        NEVER, // Never do partial aggregation
+        AUTOMATIC // Let the optimizer decide for each aggregation
     }
 
     public double getCpuCostWeight()
@@ -752,6 +761,30 @@ public class FeaturesConfig
     public FeaturesConfig setPreferPartialAggregation(boolean value)
     {
         this.preferPartialAggregation = value;
+        return this;
+    }
+
+    public PartialAggregationStrategy getPartialAggregationStrategy()
+    {
+        return partialAggregationStrategy;
+    }
+
+    @Config("optimizer.partial-aggregation-strategy")
+    public FeaturesConfig setPartialAggregationStrategy(PartialAggregationStrategy partialAggregationStrategy)
+    {
+        this.partialAggregationStrategy = partialAggregationStrategy;
+        return this;
+    }
+
+    public double getPartialAggregationByteReductionThreshold()
+    {
+        return partialAggregationByteReductionThreshold;
+    }
+
+    @Config("optimizer.partial-aggregation-byte-reduction-threshold")
+    public FeaturesConfig setPartialAggregationByteReductionThreshold(double partialAggregationByteReductionThreshold)
+    {
+        this.partialAggregationByteReductionThreshold = partialAggregationByteReductionThreshold;
         return this;
     }
 
