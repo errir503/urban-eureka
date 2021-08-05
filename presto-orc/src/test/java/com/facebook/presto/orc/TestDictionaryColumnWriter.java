@@ -21,7 +21,9 @@ import com.facebook.presto.common.type.Type;
 import com.facebook.presto.orc.metadata.ColumnEncoding;
 import com.facebook.presto.orc.metadata.StripeFooter;
 import com.facebook.presto.orc.writer.DictionaryColumnWriter;
+import com.facebook.presto.orc.writer.SliceDictionaryColumnWriter;
 import com.google.common.collect.ImmutableList;
+import io.airlift.slice.Slice;
 import io.airlift.units.DataSize;
 import org.testng.annotations.Test;
 
@@ -47,11 +49,13 @@ import static com.facebook.presto.orc.metadata.ColumnEncoding.ColumnEncodingKind
 import static com.facebook.presto.orc.metadata.ColumnEncoding.ColumnEncodingKind.DIRECT;
 import static com.facebook.presto.orc.metadata.ColumnEncoding.ColumnEncodingKind.DIRECT_V2;
 import static com.facebook.presto.orc.metadata.ColumnEncoding.ColumnEncodingKind.DWRF_DIRECT;
+import static com.facebook.presto.orc.metadata.CompressionKind.SNAPPY;
 import static com.facebook.presto.orc.metadata.CompressionKind.ZSTD;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Iterables.cycle;
 import static com.google.common.collect.Iterables.limit;
 import static com.google.common.collect.Lists.newArrayList;
+import static io.airlift.slice.SizeOf.SIZE_OF_INT;
 import static io.airlift.slice.Slices.utf8Slice;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static java.lang.Math.toIntExact;
@@ -296,6 +300,41 @@ public class TestDictionaryColumnWriter
     }
 
     @Test
+    public void testDictionaryRetainedSizeWithDifferentSettings()
+    {
+        DictionaryColumnWriter ignoredRowGroupWriter = getStringDictionaryColumnWriter(true);
+        DictionaryColumnWriter withRowGroupWriter = getStringDictionaryColumnWriter(false);
+
+        int numEntries = 10_000;
+        int numBlocks = 10;
+        BlockBuilder blockBuilder = VARCHAR.createBlockBuilder(null, numEntries);
+        Slice slice = utf8Slice("SomeString");
+        for (int i = 0; i < numEntries; i++) {
+            VARCHAR.writeSlice(blockBuilder, slice);
+        }
+
+        Block block = blockBuilder.build();
+        for (int i = 0; i < numBlocks; i++) {
+            writeBlock(ignoredRowGroupWriter, block);
+            writeBlock(withRowGroupWriter, block);
+        }
+
+        long ignoredRowGroupBytes = ignoredRowGroupWriter.getRowGroupRetainedSizeInBytes();
+        long withRowGroupBytes = withRowGroupWriter.getRowGroupRetainedSizeInBytes();
+        long expectedDictionaryIndexSize = (numBlocks * numEntries * SIZE_OF_INT);
+
+        String message = String.format("Ignored bytes %s With bytes %s", ignoredRowGroupBytes, withRowGroupBytes);
+        assertTrue(ignoredRowGroupBytes + expectedDictionaryIndexSize <= withRowGroupBytes, message);
+    }
+
+    private void writeBlock(DictionaryColumnWriter writer, Block block)
+    {
+        writer.beginRowGroup();
+        writer.writeBlock(block);
+        writer.finishRowGroup();
+    }
+
+    @Test
     public void testLongRandomValues()
             throws IOException
     {
@@ -316,6 +355,23 @@ public class TestDictionaryColumnWriter
                 .withRowGroupMaxRowCount(14_998)
                 .build();
         testDictionary(BIGINT, DWRF, writerOptions, directConversionTester, values);
+    }
+
+    private static DictionaryColumnWriter getStringDictionaryColumnWriter(boolean ignoreRowGroupSizes)
+    {
+        OrcEncoding orcEncoding = DWRF;
+        ColumnWriterOptions columnWriterOptions = ColumnWriterOptions.builder()
+                .setCompressionKind(SNAPPY)
+                .setIgnoreDictionaryRowGroupSizes(ignoreRowGroupSizes)
+                .build();
+        DictionaryColumnWriter writer = new SliceDictionaryColumnWriter(
+                COLUMN_ID,
+                VARCHAR,
+                columnWriterOptions,
+                Optional.empty(),
+                orcEncoding,
+                orcEncoding.createMetadataWriter());
+        return writer;
     }
 
     private List<Long> generateRandomLongs(int maxSize)

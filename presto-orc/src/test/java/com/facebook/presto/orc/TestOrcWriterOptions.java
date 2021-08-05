@@ -43,12 +43,12 @@ public class TestOrcWriterOptions
                     .build();
 
             if (value) {
-                DwrfStripeCacheOptions dwrfStripeCacheOptions = options.getDwrfWriterOptions().get();
+                DwrfStripeCacheOptions dwrfStripeCacheOptions = options.getDwrfStripeCacheOptions().get();
                 assertEquals(dwrfStripeCacheOptions.getStripeCacheMode(), DWRF_STRIPE_CACHE_MODE);
                 assertEquals(dwrfStripeCacheOptions.getStripeCacheMaxSize(), DWRF_STRIPE_CACHE_MAX_SIZE);
             }
             else {
-                assertEquals(Optional.empty(), options.getDwrfWriterOptions());
+                assertEquals(Optional.empty(), options.getDwrfStripeCacheOptions());
             }
         }
     }
@@ -94,7 +94,7 @@ public class TestOrcWriterOptions
         assertEquals(streamLayout, options.getStreamLayout());
         assertEquals(integerDictionaryEncodingEnabled, options.isIntegerDictionaryEncodingEnabled());
         assertEquals(stringDictionarySortingEnabled, options.isStringDictionarySortingEnabled());
-        assertEquals(Optional.empty(), options.getDwrfWriterOptions());
+        assertEquals(Optional.empty(), options.getDwrfStripeCacheOptions());
     }
 
     @Test
@@ -135,7 +135,8 @@ public class TestOrcWriterOptions
                 + "rowGroupMaxRowCount=15000, dictionaryMaxMemory=13000kB, maxStringStatisticsLimit=128B, "
                 + "maxCompressionBufferSize=512kB, compressionLevel=OptionalInt[5], streamLayout=ByColumnSize{}, "
                 + "integerDictionaryEncodingEnabled=false, stringDictionarySortingEnabled=true, "
-                + "dwrfWriterOptions=Optional[DwrfStripeCacheOptions{stripeCacheMode=INDEX_AND_FOOTER, stripeCacheMaxSize=4MB}]}";
+                + "dwrfWriterOptions=Optional[DwrfStripeCacheOptions{stripeCacheMode=INDEX_AND_FOOTER, stripeCacheMaxSize=4MB}], "
+                + "ignoreDictionaryRowGroupSizes=false}";
         assertEquals(expectedString, writerOptions.toString());
     }
 }

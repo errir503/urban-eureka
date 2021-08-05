@@ -213,6 +213,7 @@ public class OrcWriter
                 .setStringStatisticsLimit(options.getMaxStringStatisticsLimit())
                 .setIntegerDictionaryEncodingEnabled(options.isIntegerDictionaryEncodingEnabled())
                 .setStringDictionarySortingEnabled(options.isStringDictionarySortingEnabled())
+                .setIgnoreDictionaryRowGroupSizes(options.isIgnoreDictionaryRowGroupSizes())
                 .build();
         recordValidation(validation -> validation.setCompression(compressionKind));
 
@@ -275,7 +276,7 @@ public class OrcWriter
 
         // set DwrfStripeCacheWriter for DWRF files if it's enabled through the options
         if (orcEncoding == DWRF) {
-            this.dwrfStripeCacheWriter = options.getDwrfWriterOptions()
+            this.dwrfStripeCacheWriter = options.getDwrfStripeCacheOptions()
                     .map(dwrfWriterOptions -> new DwrfStripeCacheWriter(
                             dwrfWriterOptions.getStripeCacheMode(),
                             dwrfWriterOptions.getStripeCacheMaxSize()));
@@ -402,7 +403,6 @@ public class OrcWriter
             else {
                 page = null;
             }
-
             writeChunk(chunk);
         }
 
@@ -477,6 +477,7 @@ public class OrcWriter
         try {
             // add stripe data
             outputData.addAll(bufferStripeData(stripeStartOffset, flushReason));
+            rawSize += stripeRawSize;
             // if the file is being closed, add the file footer
             if (flushReason == CLOSED) {
                 outputData.addAll(bufferFileFooter());
@@ -491,7 +492,6 @@ public class OrcWriter
             dictionaryCompressionOptimizer.reset();
             rowGroupRowCount = 0;
             stripeRowCount = 0;
-            rawSize += stripeRawSize;
             stripeRawSize = 0;
             bufferedBytes = toIntExact(columnWriters.stream().mapToLong(ColumnWriter::getBufferedBytes).sum());
         }
