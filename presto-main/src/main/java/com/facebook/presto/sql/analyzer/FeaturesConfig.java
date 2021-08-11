@@ -123,7 +123,7 @@ public class FeaturesConfig
     private ArrayAggGroupImplementation arrayAggGroupImplementation = ArrayAggGroupImplementation.NEW;
     private MultimapAggGroupImplementation multimapAggGroupImplementation = MultimapAggGroupImplementation.NEW;
     private boolean spillEnabled;
-    private boolean joinSpillingEnabled;
+    private boolean joinSpillingEnabled = true;
     private boolean distinctAggregationSpillEnabled = true;
     private boolean orderByAggregationSpillEnabled = true;
     private DataSize aggregationOperatorUnspillMemoryLimit = new DataSize(4, DataSize.Unit.MEGABYTE);
@@ -152,6 +152,7 @@ public class FeaturesConfig
     private boolean enableDynamicFiltering;
     private int dynamicFilteringMaxPerDriverRowCount = 100;
     private DataSize dynamicFilteringMaxPerDriverSize = new DataSize(10, KILOBYTE);
+    private int dynamicFilteringRangeRowLimitPerDriver;
 
     private boolean fragmentResultCachingEnabled;
 
@@ -199,6 +200,10 @@ public class FeaturesConfig
     private double partialResultsMaxExecutionTimeMultiplier = 2.0;
 
     private boolean offsetClauseEnabled;
+    private boolean materializedViewDataConsistencyEnabled = true;
+
+    private boolean queryOptimizationWithMaterializedViewEnabled;
+    private boolean aggregationIfToFilterRewriteEnabled = true;
 
     public enum PartitioningPrecisionStrategy
     {
@@ -924,12 +929,6 @@ public class FeaturesConfig
         return orderByAggregationSpillEnabled;
     }
 
-    @AssertTrue(message = "If " + JOIN_SPILL_ENABLED + " is set to true, spilling must be enabled " + SPILL_ENABLED)
-    public boolean isSpillEnabledIfJoinSpillingIsEnabled()
-    {
-        return !isJoinSpillingEnabled() || isSpillEnabled();
-    }
-
     public boolean isIterativeOptimizerEnabled()
     {
         return iterativeOptimizerEnabled;
@@ -1147,6 +1146,19 @@ public class FeaturesConfig
     public FeaturesConfig setDynamicFilteringMaxPerDriverSize(DataSize dynamicFilteringMaxPerDriverSize)
     {
         this.dynamicFilteringMaxPerDriverSize = dynamicFilteringMaxPerDriverSize;
+        return this;
+    }
+
+    public int getDynamicFilteringRangeRowLimitPerDriver()
+    {
+        return dynamicFilteringRangeRowLimitPerDriver;
+    }
+
+    @Config("experimental.dynamic-filtering-range-row-limit-per-driver")
+    @ConfigDescription("Maximum number of build-side rows per driver up to which min and max values will be collected for dynamic filtering")
+    public FeaturesConfig setDynamicFilteringRangeRowLimitPerDriver(int dynamicFilteringRangeRowLimitPerDriver)
+    {
+        this.dynamicFilteringRangeRowLimitPerDriver = dynamicFilteringRangeRowLimitPerDriver;
         return this;
     }
 
@@ -1741,6 +1753,45 @@ public class FeaturesConfig
     public FeaturesConfig setOffsetClauseEnabled(boolean offsetClauseEnabled)
     {
         this.offsetClauseEnabled = offsetClauseEnabled;
+        return this;
+    }
+
+    public boolean isMaterializedViewDataConsistencyEnabled()
+    {
+        return materializedViewDataConsistencyEnabled;
+    }
+
+    @Config("materialized-view-data-consistency-enabled")
+    @ConfigDescription("When enabled and reading from materialized view, partition stitching is applied to achieve data consistency")
+    public FeaturesConfig setMaterializedViewDataConsistencyEnabled(boolean materializedViewDataConsistencyEnabled)
+    {
+        this.materializedViewDataConsistencyEnabled = materializedViewDataConsistencyEnabled;
+        return this;
+    }
+
+    public boolean isQueryOptimizationWithMaterializedViewEnabled()
+    {
+        return queryOptimizationWithMaterializedViewEnabled;
+    }
+
+    @Config("query-optimization-with-materialized-view-enabled")
+    @ConfigDescription("Experimental: Enable query optimization using materialized view. It only supports simple query formats for now.")
+    public FeaturesConfig setQueryOptimizationWithMaterializedViewEnabled(boolean value)
+    {
+        this.queryOptimizationWithMaterializedViewEnabled = value;
+        return this;
+    }
+
+    public boolean isAggregationIfToFilterRewriteEnabled()
+    {
+        return aggregationIfToFilterRewriteEnabled;
+    }
+
+    @Config("optimizer.aggregation-if-to-filter-rewrite-enabled")
+    @ConfigDescription("Enable rewriting the IF expression inside an aggregation function to a filter clause outside the aggregation")
+    public FeaturesConfig setAggregationIfToFilterRewriteEnabled(boolean value)
+    {
+        this.aggregationIfToFilterRewriteEnabled = value;
         return this;
     }
 }

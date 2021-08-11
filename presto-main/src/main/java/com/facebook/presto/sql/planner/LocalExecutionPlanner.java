@@ -246,6 +246,7 @@ import static com.facebook.airlift.concurrent.MoreFutures.addSuccessCallback;
 import static com.facebook.presto.SystemSessionProperties.getAggregationOperatorUnspillMemoryLimit;
 import static com.facebook.presto.SystemSessionProperties.getDynamicFilteringMaxPerDriverRowCount;
 import static com.facebook.presto.SystemSessionProperties.getDynamicFilteringMaxPerDriverSize;
+import static com.facebook.presto.SystemSessionProperties.getDynamicFilteringRangeRowLimitPerDriver;
 import static com.facebook.presto.SystemSessionProperties.getFilterAndProjectMinOutputPageRowCount;
 import static com.facebook.presto.SystemSessionProperties.getFilterAndProjectMinOutputPageSize;
 import static com.facebook.presto.SystemSessionProperties.getIndexLoaderTimeout;
@@ -2008,14 +2009,19 @@ public class LocalExecutionPlanner
                     node.getId(),
                     nestedLoopJoinBridgeManager);
 
-            checkArgument(buildContext.getDriverInstanceCount().orElse(1) == 1, "Expected local execution to not be parallel");
+            int partitionCount = buildContext.getDriverInstanceCount().orElse(1);
+            checkArgument(partitionCount == 1, "Expected local execution to not be parallel");
+
+            ImmutableList.Builder<OperatorFactory> factoriesBuilder = new ImmutableList.Builder<>();
+            factoriesBuilder.addAll(buildSource.getOperatorFactories());
+            createDynamicFilter(buildSource, node, context, partitionCount).ifPresent(
+                    filter -> factoriesBuilder.add(createDynamicFilterSourceOperatorFactory(filter, node.getId(), buildSource, buildContext)));
+            factoriesBuilder.add(nestedLoopBuildOperatorFactory);
+
             context.addDriverFactory(
                     buildContext.isInputDriver(),
                     false,
-                    ImmutableList.<OperatorFactory>builder()
-                            .addAll(buildSource.getOperatorFactories())
-                            .add(nestedLoopBuildOperatorFactory)
-                            .build(),
+                    factoriesBuilder.build(),
                     buildContext.getDriverInstanceCount(),
                     buildSource.getPipelineExecutionStrategy(),
                     Optional.empty());
@@ -2323,7 +2329,8 @@ public class LocalExecutionPlanner
                     dynamicFilter.getTupleDomainConsumer(),
                     filterBuildChannels,
                     getDynamicFilteringMaxPerDriverRowCount(context.getSession()),
-                    getDynamicFilteringMaxPerDriverSize(context.getSession()));
+                    getDynamicFilteringMaxPerDriverSize(context.getSession()),
+                    getDynamicFilteringRangeRowLimitPerDriver(context.getSession()));
         }
 
         private Optional<LocalDynamicFilter> createDynamicFilter(PhysicalOperation buildSource, AbstractJoinNode node, LocalExecutionPlanContext context, int partitionCount)
@@ -3091,11 +3098,12 @@ public class LocalExecutionPlanner
         {
             List<VariableReferenceExpression> aggregationOutputVariables = new ArrayList<>();
             List<AccumulatorFactory> accumulatorFactories = new ArrayList<>();
+            boolean useSpill = spillEnabled && !isStreamable && (!hasDistinct(aggregations) || distinctSpillEnabled) && (!hasOrderBy(aggregations) || orderBySpillEnabled);
             for (Map.Entry<VariableReferenceExpression, Aggregation> entry : aggregations.entrySet()) {
                 VariableReferenceExpression variable = entry.getKey();
                 Aggregation aggregation = entry.getValue();
 
-                accumulatorFactories.add(buildAccumulatorFactory(source, aggregation, !isStreamable && spillEnabled));
+                accumulatorFactories.add(buildAccumulatorFactory(source, aggregation, useSpill));
                 aggregationOutputVariables.add(variable);
             }
 
@@ -3152,14 +3160,22 @@ public class LocalExecutionPlanner
                         groupIdChannel,
                         expectedGroups,
                         maxPartialAggregationMemorySize,
-                        spillEnabled,
-                        distinctSpillEnabled,
-                        orderBySpillEnabled,
+                        useSpill,
                         unspillMemoryLimit,
                         spillerFactory,
                         joinCompiler,
                         useSystemMemory);
             }
+        }
+
+        private boolean hasDistinct(Map<VariableReferenceExpression, Aggregation> aggregations)
+        {
+            return aggregations.values().stream().anyMatch(aggregation -> aggregation.isDistinct());
+        }
+
+        private boolean hasOrderBy(Map<VariableReferenceExpression, Aggregation> aggregations)
+        {
+            return aggregations.values().stream().anyMatch(aggregation -> aggregation.getOrderBy().isPresent());
         }
     }
 

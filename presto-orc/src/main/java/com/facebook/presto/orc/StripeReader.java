@@ -78,6 +78,7 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Iterables.getOnlyElement;
+import static java.lang.Math.multiplyExact;
 import static java.lang.Math.toIntExact;
 import static java.util.Objects.requireNonNull;
 
@@ -420,7 +421,7 @@ public class StripeReader
     }
 
     private List<RowGroup> createRowGroups(
-            int rowsInStripe,
+            long rowsInStripe,
             Map<StreamId, Stream> streams,
             Map<StreamId, ValueInputStream<?>> valueStreams,
             Map<StreamId, List<RowGroupIndex>> columnIndexes,
@@ -432,8 +433,6 @@ public class StripeReader
 
         for (int rowGroupId : selectedRowGroups) {
             Map<StreamId, StreamCheckpoint> checkpoints = getStreamCheckpoints(includedOrcColumns, types, decompressor.isPresent(), rowGroupId, encodings, streams, columnIndexes);
-            int rowOffset = rowGroupId * rowsInRowGroup;
-            int rowsInGroup = Math.min(rowsInStripe - rowOffset, rowsInRowGroup);
             long minAverageRowBytes = columnIndexes
                     .entrySet()
                     .stream()
@@ -442,14 +441,17 @@ public class StripeReader
                             .getColumnStatistics()
                             .getMinAverageValueSizeInBytes())
                     .sum();
-            rowGroupBuilder.add(createRowGroup(rowGroupId, rowOffset, rowsInGroup, minAverageRowBytes, valueStreams, checkpoints));
+            rowGroupBuilder.add(createRowGroup(rowGroupId, rowsInStripe, rowsInRowGroup, minAverageRowBytes, valueStreams, checkpoints));
         }
 
         return rowGroupBuilder.build();
     }
 
-    public static RowGroup createRowGroup(int groupId, int rowOffset, int rowCount, long minAverageRowBytes, Map<StreamId, ValueInputStream<?>> valueStreams, Map<StreamId, StreamCheckpoint> checkpoints)
+    @VisibleForTesting
+    static RowGroup createRowGroup(int groupId, long rowsInStripe, long rowsInRowGroup, long minAverageRowBytes, Map<StreamId, ValueInputStream<?>> valueStreams, Map<StreamId, StreamCheckpoint> checkpoints)
     {
+        long rowOffset = multiplyExact(groupId, rowsInRowGroup);
+        int rowsInGroup = toIntExact(Math.min(rowsInStripe - rowOffset, rowsInRowGroup));
         ImmutableMap.Builder<StreamId, InputStreamSource<?>> builder = ImmutableMap.builder();
         for (Entry<StreamId, StreamCheckpoint> entry : checkpoints.entrySet()) {
             StreamId streamId = entry.getKey();
@@ -464,7 +466,7 @@ public class StripeReader
             builder.put(streamId, createCheckpointStreamSource(valueStream, checkpoint));
         }
         InputStreamSources rowGroupStreams = new InputStreamSources(builder.build());
-        return new RowGroup(groupId, rowOffset, rowCount, minAverageRowBytes, rowGroupStreams);
+        return new RowGroup(groupId, rowOffset, rowsInGroup, minAverageRowBytes, rowGroupStreams);
     }
 
     public StripeFooter readStripeFooter(StripeId stripeId, StripeInformation stripe, OrcAggregatedMemoryContext systemMemoryUsage)
@@ -536,13 +538,13 @@ public class StripeReader
 
     private Set<Integer> selectRowGroups(StripeInformation stripe, Map<StreamId, List<RowGroupIndex>> columnIndexes)
     {
-        int rowsInStripe = toIntExact(stripe.getNumberOfRows());
+        long rowsInStripe = stripe.getNumberOfRows();
         int groupsInStripe = ceil(rowsInStripe, rowsInRowGroup);
 
         ImmutableSet.Builder<Integer> selectedRowGroups = ImmutableSet.builder();
-        int remainingRows = rowsInStripe;
+        long remainingRows = rowsInStripe;
         for (int rowGroup = 0; rowGroup < groupsInStripe; ++rowGroup) {
-            int rows = Math.min(remainingRows, rowsInRowGroup);
+            int rows = toIntExact(Math.min(remainingRows, rowsInRowGroup));
             Map<Integer, ColumnStatistics> statistics = getRowGroupStatistics(types.get(0), columnIndexes, rowGroup);
             if (predicate.matches(rows, statistics)) {
                 selectedRowGroups.add(rowGroup);
@@ -613,9 +615,10 @@ public class StripeReader
     /**
      * Ceiling of integer division
      */
-    private static int ceil(int dividend, int divisor)
+    private static int ceil(long dividend, int divisor)
     {
-        return ((dividend + divisor) - 1) / divisor;
+        long ceil = ((dividend + divisor) - 1) / divisor;
+        return toIntExact(ceil);
     }
 
     public static class StripeId

@@ -106,7 +106,8 @@ public class TestQueuesDb
         }
     }
 
-    @Test(timeOut = 60_000)
+    // Disabled, please look at https://github.com/prestodb/presto/issues/16461
+    @Test(timeOut = 60_000, enabled = false)
     public void testResourceGroupConcurrencyThreshold()
             throws Exception
     {
@@ -178,8 +179,8 @@ public class TestQueuesDb
         waitForQueryState(queryRunner, secondDashboardQuery, QUEUED);
         waitForRunningQueryCount(queryRunner, 1);
         // Update db to allow for 1 more running query in dashboard resource group
-        dao.updateResourceGroup(3, "user-${USER}", "1MB", 3, 4, 4, null, null, null, null, null, 1L, TEST_ENVIRONMENT);
-        dao.updateResourceGroup(5, "dashboard-${USER}", "1MB", 1, 2, 2, null, null, null, null, null, 3L, TEST_ENVIRONMENT);
+        dao.updateResourceGroup(3, "user-${USER}", "1MB", 3, 4, 4, null, null, null, null, null, null, null, null, 1L, TEST_ENVIRONMENT);
+        dao.updateResourceGroup(5, "dashboard-${USER}", "1MB", 1, 2, 2, null, null, null, null, null, null, null, null, 3L, TEST_ENVIRONMENT);
         waitForQueryState(queryRunner, secondDashboardQuery, RUNNING);
         QueryId thirdDashboardQuery = createQuery(queryRunner, dashboardSession(), LONG_LASTING_QUERY);
         waitForQueryState(queryRunner, thirdDashboardQuery, QUEUED);
@@ -202,7 +203,8 @@ public class TestQueuesDb
         waitForCompleteQueryCount(queryRunner, 1);
     }
 
-    @Test(timeOut = 60_000)
+    // Test is flaky and disabled.
+    @Test(timeOut = 60_000, enabled = false)
     public void testTwoQueriesAtSameTime()
             throws Exception
     {
@@ -226,8 +228,8 @@ public class TestQueuesDb
         waitForQueryState(queryRunner, thirdDashboardQuery, FAILED);
 
         // Allow one more query to run and resubmit third query
-        dao.updateResourceGroup(3, "user-${USER}", "1MB", 3, 4, 4, null, null, null, null, null, 1L, TEST_ENVIRONMENT);
-        dao.updateResourceGroup(5, "dashboard-${USER}", "1MB", 1, 2, 2, null, null, null, null, null, 3L, TEST_ENVIRONMENT);
+        dao.updateResourceGroup(3, "user-${USER}", "1MB", 3, 4, 4, null, null, null, null, null, null, null, null, 1L, TEST_ENVIRONMENT);
+        dao.updateResourceGroup(5, "dashboard-${USER}", "1MB", 1, 2, 2, null, null, null, null, null, null, null, null, 3L, TEST_ENVIRONMENT);
 
         InternalResourceGroupManager manager = queryRunner.getCoordinator().getResourceGroupManager().get();
         ReloadingResourceGroupConfigurationManager reloadingConfigurationManager = (ReloadingResourceGroupConfigurationManager) manager.getConfigurationManager();
@@ -239,7 +241,7 @@ public class TestQueuesDb
         waitForQueryState(queryRunner, thirdDashboardQuery, QUEUED);
 
         // Lower running queries in dashboard resource groups and reload the config
-        dao.updateResourceGroup(5, "dashboard-${USER}", "1MB", 1, 1, 1, null, null, null, null, null, 3L, TEST_ENVIRONMENT);
+        dao.updateResourceGroup(5, "dashboard-${USER}", "1MB", 1, 1, 1, null, null, null, null, null, null, null, null, 3L, TEST_ENVIRONMENT);
         reloadingConfigurationManager.load();
 
         // Cancel query and verify that third query is still queued
@@ -300,7 +302,7 @@ public class TestQueuesDb
         assertEquals(resourceGroup.get().toString(), "global.user-user.dashboard-user");
 
         // create a new resource group that rejects all queries submitted to it
-        dao.insertResourceGroup(8, "reject-all-queries", "1MB", 0, 0, 0, null, null, null, null, null, 3L, TEST_ENVIRONMENT);
+        dao.insertResourceGroup(8, "reject-all-queries", "1MB", 0, 0, 0, null, null, null, null, null, null, null, null, 3L, TEST_ENVIRONMENT);
 
         // add a new selector that has a higher priority than the existing dashboard selector and that routes queries to the "reject-all-queries" resource group
         dao.insertSelector(8, 200, "user.*", "(?i).*dashboard.*", null, null, null);
@@ -316,7 +318,8 @@ public class TestQueuesDb
         assertEquals(basicQueryInfo.getErrorCode(), QUERY_QUEUE_FULL.toErrorCode());
     }
 
-    @Test(timeOut = 60_000)
+    //Disabling Flaky Test
+    @Test(timeOut = 60_000, enabled = false)
     public void testQueryExecutionTimeLimit()
             throws Exception
     {
@@ -336,7 +339,7 @@ public class TestQueuesDb
         assertEquals(queryManager.getFullQueryInfo(firstQuery).getErrorCode(), EXCEEDED_TIME_LIMIT.toErrorCode());
         assertContains(queryManager.getFullQueryInfo(firstQuery).getFailureInfo().getMessage(), "Query exceeded the maximum execution time limit of 1.00ms");
         // set max running queries to 0 for the dashboard resource group so that new queries get queued immediately
-        dao.updateResourceGroup(5, "dashboard-${USER}", "1MB", 1, null, 0, null, null, null, null, null, 3L, TEST_ENVIRONMENT);
+        dao.updateResourceGroup(5, "dashboard-${USER}", "1MB", 1, null, 0, null, null, null, null, null, null, null, null, 3L, TEST_ENVIRONMENT);
         reloadingConfigurationManager.load();
         QueryId secondQuery = createQuery(
                 queryRunner,
@@ -354,7 +357,7 @@ public class TestQueuesDb
         DispatchManager dispatchManager = queryRunner.getCoordinator().getDispatchManager();
         assertEquals(dispatchManager.getQueryInfo(secondQuery).getState(), QUEUED);
         // reconfigure the resource group to run the second query
-        dao.updateResourceGroup(5, "dashboard-${USER}", "1MB", 1, null, 1, null, null, null, null, null, 3L, TEST_ENVIRONMENT);
+        dao.updateResourceGroup(5, "dashboard-${USER}", "1MB", 1, null, 1, null, null, null, null, null, null, null, null, 3L, TEST_ENVIRONMENT);
         reloadingConfigurationManager.load();
         // cancel the first one and let the second one start
         dispatchManager.cancelQuery(firstQuery);

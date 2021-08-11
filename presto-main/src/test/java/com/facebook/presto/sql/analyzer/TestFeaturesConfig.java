@@ -89,7 +89,7 @@ public class TestFeaturesConfig
                 .setRe2JDfaStatesLimit(Integer.MAX_VALUE)
                 .setRe2JDfaRetries(5)
                 .setSpillEnabled(false)
-                .setJoinSpillingEnabled(false)
+                .setJoinSpillingEnabled(true)
                 .setDistinctAggregationSpillEnabled(true)
                 .setOrderByAggregationSpillEnabled(true)
                 .setAggregationOperatorUnspillMemoryLimit(DataSize.valueOf("4MB"))
@@ -111,6 +111,7 @@ public class TestFeaturesConfig
                 .setEnableDynamicFiltering(false)
                 .setDynamicFilteringMaxPerDriverRowCount(100)
                 .setDynamicFilteringMaxPerDriverSize(new DataSize(10, KILOBYTE))
+                .setDynamicFilteringRangeRowLimitPerDriver(0)
                 .setFragmentResultCachingEnabled(false)
                 .setEnableStatsCalculator(true)
                 .setEnableStatsCollectionForTemporaryTable(false)
@@ -171,7 +172,10 @@ public class TestFeaturesConfig
                 .setPartialResultsEnabled(false)
                 .setPartialResultsCompletionRatioThreshold(0.5)
                 .setOffsetClauseEnabled(false)
-                .setPartialResultsMaxExecutionTimeMultiplier(2.0));
+                .setPartialResultsMaxExecutionTimeMultiplier(2.0)
+                .setMaterializedViewDataConsistencyEnabled(true)
+                .setQueryOptimizationWithMaterializedViewEnabled(false)
+                .setAggregationIfToFilterRewriteEnabled(true));
     }
 
     @Test
@@ -187,6 +191,7 @@ public class TestFeaturesConfig
                 .put("experimental.enable-dynamic-filtering", "true")
                 .put("experimental.dynamic-filtering-max-per-driver-row-count", "256")
                 .put("experimental.dynamic-filtering-max-per-driver-size", "64kB")
+                .put("experimental.dynamic-filtering-range-row-limit-per-driver", "1000")
                 .put("experimental.fragment-result-caching-enabled", "true")
                 .put("experimental.enable-stats-calculator", "false")
                 .put("experimental.enable-stats-collection-for-temporary-table", "true")
@@ -230,7 +235,7 @@ public class TestFeaturesConfig
                 .put("re2j.dfa-states-limit", "42")
                 .put("re2j.dfa-retries", "42")
                 .put("experimental.spill-enabled", "true")
-                .put("experimental.join-spill-enabled", "true")
+                .put("experimental.join-spill-enabled", "false")
                 .put("experimental.distinct-aggregation-spill-enabled", "false")
                 .put("experimental.order-by-aggregation-spill-enabled", "false")
                 .put("experimental.aggregation-operator-unspill-memory-limit", "100MB")
@@ -295,6 +300,9 @@ public class TestFeaturesConfig
                 .put("partial-results-completion-ratio-threshold", "0.9")
                 .put("partial-results-max-execution-time-multiplier", "1.5")
                 .put("offset-clause-enabled", "true")
+                .put("materialized-view-data-consistency-enabled", "false")
+                .put("query-optimization-with-materialized-view-enabled", "true")
+                .put("optimizer.aggregation-if-to-filter-rewrite-enabled", "false")
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -307,6 +315,7 @@ public class TestFeaturesConfig
                 .setEnableDynamicFiltering(true)
                 .setDynamicFilteringMaxPerDriverRowCount(256)
                 .setDynamicFilteringMaxPerDriverSize(new DataSize(64, KILOBYTE))
+                .setDynamicFilteringRangeRowLimitPerDriver(1000)
                 .setFragmentResultCachingEnabled(true)
                 .setEnableStatsCalculator(false)
                 .setEnableStatsCollectionForTemporaryTable(true)
@@ -345,7 +354,7 @@ public class TestFeaturesConfig
                 .setRe2JDfaStatesLimit(42)
                 .setRe2JDfaRetries(42)
                 .setSpillEnabled(true)
-                .setJoinSpillingEnabled(true)
+                .setJoinSpillingEnabled(false)
                 .setDistinctAggregationSpillEnabled(false)
                 .setOrderByAggregationSpillEnabled(false)
                 .setAggregationOperatorUnspillMemoryLimit(DataSize.valueOf("100MB"))
@@ -415,7 +424,10 @@ public class TestFeaturesConfig
                 .setPartialResultsEnabled(true)
                 .setPartialResultsCompletionRatioThreshold(0.9)
                 .setOffsetClauseEnabled(true)
-                .setPartialResultsMaxExecutionTimeMultiplier(1.5);
+                .setPartialResultsMaxExecutionTimeMultiplier(1.5)
+                .setMaterializedViewDataConsistencyEnabled(false)
+                .setQueryOptimizationWithMaterializedViewEnabled(true)
+                .setAggregationIfToFilterRewriteEnabled(false);
         assertFullMapping(properties, expected);
     }
 

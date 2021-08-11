@@ -27,6 +27,10 @@ import org.openjdk.jol.info.ClassLayout;
 import java.util.Arrays;
 import java.util.function.BiConsumer;
 
+import static com.facebook.presto.orc.writer.SegmentedSliceBlockBuilder.Segments.INITIAL_SEGMENTS;
+import static com.facebook.presto.orc.writer.SegmentedSliceBlockBuilder.Segments.SEGMENT_SIZE;
+import static com.facebook.presto.orc.writer.SegmentedSliceBlockBuilder.Segments.offset;
+import static com.facebook.presto.orc.writer.SegmentedSliceBlockBuilder.Segments.segment;
 import static io.airlift.slice.SizeOf.sizeOf;
 import static java.lang.String.format;
 
@@ -78,10 +82,10 @@ public class SegmentedSliceBlockBuilder
 
     public SegmentedSliceBlockBuilder(int expectedEntries, int expectedBytes)
     {
-        int initialSize = Math.max(Segments.INITIAL_SEGMENTS, Segments.segment(expectedEntries) + 1);
+        int initialSize = Math.max(INITIAL_SEGMENTS, segment(expectedEntries) + 1);
         offsets = new int[initialSize][];
         closedSlices = new Slice[initialSize];
-        offsets[0] = new int[Segments.SEGMENT_SIZE + 1];
+        offsets[0] = new int[SEGMENT_SIZE + 1];
         openSliceOutput = new DynamicSliceOutput(expectedBytes);
     }
 
@@ -109,8 +113,8 @@ public class SegmentedSliceBlockBuilder
     @Override
     public int getSliceLength(int position)
     {
-        int offset = Segments.offset(position);
-        int segment = Segments.segment(position);
+        int offset = offset(position);
+        int segment = segment(position);
         return offsets[segment][offset + 1] - offsets[segment][offset];
     }
 
@@ -122,7 +126,7 @@ public class SegmentedSliceBlockBuilder
     @Override
     public Slice getRawSlice(int position)
     {
-        return getSegmentRawSlice(Segments.segment(position));
+        return getSegmentRawSlice(segment(position));
     }
 
     @Override
@@ -206,7 +210,7 @@ public class SegmentedSliceBlockBuilder
             }
 
             if (offsets[openSegmentIndex] == null) {
-                offsets[openSegmentIndex] = new int[Segments.SEGMENT_SIZE + 1];
+                offsets[openSegmentIndex] = new int[SEGMENT_SIZE + 1];
             }
         }
         openSliceOutput.writeBytes(source, sourceIndex, length);
@@ -218,7 +222,7 @@ public class SegmentedSliceBlockBuilder
     {
         openSegmentOffset++;
         offsets[openSegmentIndex][openSegmentOffset] = openSliceOutput.size();
-        if (openSegmentOffset == Segments.SEGMENT_SIZE) {
+        if (openSegmentOffset == SEGMENT_SIZE) {
             // Copy the content from the openSlice and append it to the closedSlices.
             // Note: openSlice will be reused for next segment, so a copy is required.
             Slice slice = openSliceOutput.copySlice();
@@ -294,8 +298,8 @@ public class SegmentedSliceBlockBuilder
 
     private int getOffset(int position)
     {
-        int offset = Segments.offset(position);
-        int segment = Segments.segment(position);
+        int offset = offset(position);
+        int segment = segment(position);
         return offsets[segment][offset];
     }
 
@@ -319,8 +323,8 @@ public class SegmentedSliceBlockBuilder
 
     public boolean equals(int position, Block block, int blockPosition, int blockLength)
     {
-        int segment = Segments.segment(position);
-        int segmentOffset = Segments.offset(position);
+        int segment = segment(position);
+        int segmentOffset = offset(position);
 
         int offset = offsets[segment][segmentOffset];
         int length = offsets[segment][segmentOffset + 1] - offset;
@@ -329,11 +333,11 @@ public class SegmentedSliceBlockBuilder
 
     public int compareTo(int left, int right)
     {
-        int leftSegment = Segments.segment(left);
-        int leftSegmentOffset = Segments.offset(left);
+        int leftSegment = segment(left);
+        int leftSegmentOffset = offset(left);
 
-        int rightSegment = Segments.segment(right);
-        int rightSegmentOffset = Segments.offset(right);
+        int rightSegment = segment(right);
+        int rightSegmentOffset = offset(right);
 
         Slice leftRawSlice = getSegmentRawSlice(leftSegment);
         int leftOffset = offsets[leftSegment][leftSegmentOffset];
@@ -348,8 +352,8 @@ public class SegmentedSliceBlockBuilder
 
     public long hash(int position)
     {
-        int segment = Segments.segment(position);
-        int segmentOffset = Segments.offset(position);
+        int segment = segment(position);
+        int segmentOffset = offset(position);
 
         int offset = offsets[segment][segmentOffset];
         int length = offsets[segment][segmentOffset + 1] - offset;

@@ -123,6 +123,7 @@ public final class SystemSessionProperties
     public static final String DISTINCT_AGGREGATION_SPILL_ENABLED = "distinct_aggregation_spill_enabled";
     public static final String ORDER_BY_AGGREGATION_SPILL_ENABLED = "order_by_aggregation_spill_enabled";
     public static final String AGGREGATION_OPERATOR_UNSPILL_MEMORY_LIMIT = "aggregation_operator_unspill_memory_limit";
+    public static final String QUERY_MAX_REVOCABLE_MEMORY_PER_NODE = "query_max_revocable_memory_per_node";
     public static final String TEMP_STORAGE_SPILLER_BUFFER_SIZE = "temp_storage_spiller_buffer_size";
     public static final String OPTIMIZE_DISTINCT_AGGREGATIONS = "optimize_mixed_distinct_aggregations";
     public static final String LEGACY_ROW_FIELD_ORDINAL_ACCESS = "legacy_row_field_ordinal_access";
@@ -176,6 +177,7 @@ public final class SystemSessionProperties
     public static final String ENABLE_DYNAMIC_FILTERING = "enable_dynamic_filtering";
     public static final String DYNAMIC_FILTERING_MAX_PER_DRIVER_ROW_COUNT = "dynamic_filtering_max_per_driver_row_count";
     public static final String DYNAMIC_FILTERING_MAX_PER_DRIVER_SIZE = "dynamic_filtering_max_per_driver_size";
+    public static final String DYNAMIC_FILTERING_RANGE_ROW_LIMIT_PER_DRIVER = "dynamic_filtering_range_row_limit_per_driver";
     public static final String FRAGMENT_RESULT_CACHING_ENABLED = "fragment_result_caching_enabled";
     public static final String LEGACY_TYPE_COERCION_WARNING_ENABLED = "legacy_type_coercion_warning_enabled";
     public static final String INLINE_SQL_FUNCTIONS = "inline_sql_functions";
@@ -195,6 +197,10 @@ public final class SystemSessionProperties
     public static final String PARTIAL_RESULTS_COMPLETION_RATIO_THRESHOLD = "partial_results_completion_ratio_threshold";
     public static final String PARTIAL_RESULTS_MAX_EXECUTION_TIME_MULTIPLIER = "partial_results_max_execution_time_multiplier";
     public static final String OFFSET_CLAUSE_ENABLED = "offset_clause_enabled";
+    public static final String VERBOSE_EXCEEDED_MEMORY_LIMIT_ERRORS_ENABLED = "verbose_exceeded_memory_limit_errors_enabled";
+    public static final String MATERIALIZED_VIEW_DATA_CONSISTENCY_ENABLED = "materialized_view_data_consistency_enabled";
+    public static final String QUERY_OPTIMIZATION_WITH_MATERIALIZED_VIEW_ENABLED = "query_optimization_with_materialized_view_enabled";
+    public static final String AGGREGATION_IF_TO_FILTER_REWRITE_ENABLED = "aggregation_if_to_filter_rewrite_enabled";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -616,6 +622,15 @@ public final class SystemSessionProperties
                         value -> DataSize.valueOf((String) value),
                         DataSize::toString),
                 new PropertyMetadata<>(
+                        QUERY_MAX_REVOCABLE_MEMORY_PER_NODE,
+                        "Maximum amount of revocable memory a query can use",
+                        VARCHAR,
+                        DataSize.class,
+                        nodeSpillConfig.getMaxRevocableMemoryPerNode(),
+                        true,
+                        value -> DataSize.valueOf((String) value),
+                        DataSize::toString),
+                new PropertyMetadata<>(
                         TEMP_STORAGE_SPILLER_BUFFER_SIZE,
                         "Experimental: Buffer size used by TempStorageSingleStreamSpiller",
                         VARCHAR,
@@ -731,8 +746,8 @@ public final class SystemSessionProperties
                         PARTIAL_AGGREGATION_STRATEGY,
                         format("Partial aggregation strategy to use. Options are %s",
                                 Stream.of(PartialAggregationStrategy.values())
-                                .map(PartialAggregationStrategy::name)
-                                .collect(joining(","))),
+                                        .map(PartialAggregationStrategy::name)
+                                        .collect(joining(","))),
                         VARCHAR,
                         PartialAggregationStrategy.class,
                         featuresConfig.getPartialAggregationStrategy(),
@@ -936,6 +951,11 @@ public final class SystemSessionProperties
                         false,
                         value -> DataSize.valueOf((String) value),
                         DataSize::toString),
+                integerProperty(
+                        DYNAMIC_FILTERING_RANGE_ROW_LIMIT_PER_DRIVER,
+                        "Maximum number of build-side rows per driver up to which min and max values will be collected for dynamic filtering",
+                        featuresConfig.getDynamicFilteringRangeRowLimitPerDriver(),
+                        false),
                 booleanProperty(
                         FRAGMENT_RESULT_CACHING_ENABLED,
                         "Enable fragment result caching and read/write leaf fragment result pages from/to cache when applicable",
@@ -1042,6 +1062,26 @@ public final class SystemSessionProperties
                         PARTIAL_RESULTS_MAX_EXECUTION_TIME_MULTIPLIER,
                         "This value is multiplied by the time taken to reach the completion ratio threshold and is set as max task end time",
                         featuresConfig.getPartialResultsMaxExecutionTimeMultiplier(),
+                        false),
+                booleanProperty(
+                        VERBOSE_EXCEEDED_MEMORY_LIMIT_ERRORS_ENABLED,
+                        "When enabled the error message for exceeded memory limit errors will contain additional operator memory allocation details",
+                        nodeMemoryConfig.isVerboseExceededMemoryLimitErrorsEnabled(),
+                        false),
+                booleanProperty(
+                        MATERIALIZED_VIEW_DATA_CONSISTENCY_ENABLED,
+                        "When enabled and reading from materialized view, partition stitching is applied to achieve data consistency",
+                        featuresConfig.isMaterializedViewDataConsistencyEnabled(),
+                        false),
+                booleanProperty(
+                        QUERY_OPTIMIZATION_WITH_MATERIALIZED_VIEW_ENABLED,
+                        "Enable query optimization with materialized view",
+                        featuresConfig.isQueryOptimizationWithMaterializedViewEnabled(),
+                        true),
+                booleanProperty(
+                        AGGREGATION_IF_TO_FILTER_REWRITE_ENABLED,
+                        "Enable rewriting the IF expression inside an aggregation function to a filter clause outside the aggregation",
+                        featuresConfig.isAggregationIfToFilterRewriteEnabled(),
                         false));
     }
 
@@ -1371,6 +1411,11 @@ public final class SystemSessionProperties
         return memoryLimitForMerge;
     }
 
+    public static DataSize getQueryMaxRevocableMemoryPerNode(Session session)
+    {
+        return session.getSystemProperty(QUERY_MAX_REVOCABLE_MEMORY_PER_NODE, DataSize.class);
+    }
+
     public static DataSize getTempStorageSpillerBufferSize(Session session)
     {
         DataSize tempStorageSpillerBufferSize = session.getSystemProperty(TEMP_STORAGE_SPILLER_BUFFER_SIZE, DataSize.class);
@@ -1683,6 +1728,11 @@ public final class SystemSessionProperties
         return session.getSystemProperty(DYNAMIC_FILTERING_MAX_PER_DRIVER_SIZE, DataSize.class);
     }
 
+    public static int getDynamicFilteringRangeRowLimitPerDriver(Session session)
+    {
+        return session.getSystemProperty(DYNAMIC_FILTERING_RANGE_ROW_LIMIT_PER_DRIVER, Integer.class);
+    }
+
     public static boolean isFragmentResultCachingEnabled(Session session)
     {
         return session.getSystemProperty(FRAGMENT_RESULT_CACHING_ENABLED, Boolean.class);
@@ -1756,5 +1806,25 @@ public final class SystemSessionProperties
     public static boolean isOffsetClauseEnabled(Session session)
     {
         return session.getSystemProperty(OFFSET_CLAUSE_ENABLED, Boolean.class);
+    }
+
+    public static boolean isVerboseExceededMemoryLimitErrorsEnabled(Session session)
+    {
+        return session.getSystemProperty(VERBOSE_EXCEEDED_MEMORY_LIMIT_ERRORS_ENABLED, Boolean.class);
+    }
+
+    public static boolean isMaterializedViewDataConsistencyEnabled(Session session)
+    {
+        return session.getSystemProperty(MATERIALIZED_VIEW_DATA_CONSISTENCY_ENABLED, Boolean.class);
+    }
+
+    public static boolean isQueryOptimizationWithMaterializedViewEnabled(Session session)
+    {
+        return session.getSystemProperty(QUERY_OPTIMIZATION_WITH_MATERIALIZED_VIEW_ENABLED, Boolean.class);
+    }
+
+    public static boolean isAggregationIfToFilterRewriteEnabled(Session session)
+    {
+        return session.getSystemProperty(AGGREGATION_IF_TO_FILTER_REWRITE_ENABLED, Boolean.class);
     }
 }

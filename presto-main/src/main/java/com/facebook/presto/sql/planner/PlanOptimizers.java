@@ -97,6 +97,7 @@ import com.facebook.presto.sql.planner.iterative.rule.RemoveUnreferencedScalarAp
 import com.facebook.presto.sql.planner.iterative.rule.RemoveUnreferencedScalarLateralNodes;
 import com.facebook.presto.sql.planner.iterative.rule.RemoveUnsupportedDynamicFilters;
 import com.facebook.presto.sql.planner.iterative.rule.ReorderJoins;
+import com.facebook.presto.sql.planner.iterative.rule.RewriteAggregationIfToFilter;
 import com.facebook.presto.sql.planner.iterative.rule.RewriteFilterWithExternalFunctionToProject;
 import com.facebook.presto.sql.planner.iterative.rule.RewriteSpatialPartitioningAggregation;
 import com.facebook.presto.sql.planner.iterative.rule.RuntimeReorderJoinSides;
@@ -281,6 +282,7 @@ public class PlanOptimizers
                         statsCalculator,
                         estimatedExchangesCostCalculator,
                         ImmutableSet.<Rule<?>>builder()
+                                .addAll(new InlineSqlFunctions(metadata, sqlParser).rules())
                                 .addAll(new DesugarLambdaExpression().rules())
                                 .addAll(new DesugarAtTimeZone(metadata, sqlParser).rules())
                                 .addAll(new DesugarCurrentUser().rules())
@@ -351,11 +353,6 @@ public class PlanOptimizers
                         ruleStats,
                         statsCalculator,
                         estimatedExchangesCostCalculator,
-                        new InlineSqlFunctions(metadata, sqlParser).rules()),
-                new IterativeOptimizer(
-                        ruleStats,
-                        statsCalculator,
-                        estimatedExchangesCostCalculator,
                         columnPruningRules),
                 new IterativeOptimizer(
                         ruleStats,
@@ -403,6 +400,11 @@ public class PlanOptimizers
         // After this point, all planNodes should not contain OriginalExpression
 
         builder.add(
+                new IterativeOptimizer(
+                        ruleStats,
+                        statsCalculator,
+                        estimatedExchangesCostCalculator,
+                        ImmutableSet.of(new RewriteAggregationIfToFilter(metadata.getFunctionAndTypeManager()))),
                 predicatePushDown,
                 new IterativeOptimizer(
                         ruleStats,

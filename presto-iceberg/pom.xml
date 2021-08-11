@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.facebook.presto</groupId>
         <artifactId>presto-root</artifactId>
-        <version>0.258-SNAPSHOT</version>
+        <version>0.260-SNAPSHOT</version>
     </parent>
     <artifactId>presto-iceberg</artifactId>
     <description>Presto - Iceberg Connector</description>
@@ -19,11 +19,6 @@
         <dependency>
             <groupId>com.facebook.airlift</groupId>
             <artifactId>concurrent</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>com.facebook.presto</groupId>
-            <artifactId>presto-client</artifactId>
         </dependency>
 
         <dependency>
@@ -102,6 +97,11 @@
                     <artifactId>parquet-format</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>com.facebook.presto</groupId>
+            <artifactId>presto-orc</artifactId>
         </dependency>
 
         <dependency>
