@@ -1148,22 +1148,18 @@ public class SemiTransactionalHiveMetastore
                 checkArgument(!targetLocation.isEmpty(), "target location is empty");
                 Optional<Path> currentPath = tableAndMore.getCurrentLocation();
                 Path targetPath = new Path(targetLocation);
-                if (table.getPartitionColumns().isEmpty() && currentPath.isPresent()) {
-                    // CREATE TABLE AS SELECT unpartitioned table
-                    if (targetPath.equals(currentPath.get())) {
-                        // Target path and current path are the same. Therefore, directory move is not needed.
-                    }
-                    else {
-                        renameDirectory(
-                                context,
-                                hdfsEnvironment,
-                                currentPath.get(),
-                                targetPath,
-                                () -> cleanUpTasksForAbort.add(new DirectoryCleanUpTask(context, targetPath, true)));
-                    }
+                if (table.getPartitionColumns().isEmpty() && currentPath.isPresent() && !targetPath.equals(currentPath.get())) {
+                    // CREATE TABLE AS SELECT unpartitioned table with staging directory
+                    renameDirectory(
+                            context,
+                            hdfsEnvironment,
+                            currentPath.get(),
+                            targetPath,
+                            () -> cleanUpTasksForAbort.add(new DirectoryCleanUpTask(context, targetPath, true)));
                 }
                 else {
                     // CREATE TABLE AS SELECT partitioned table, or
+                    // CREATE TABLE AS SELECT unpartitioned table without temporary staging directory
                     // CREATE TABLE partitioned/unpartitioned table (without data)
                     if (pathExists(context, hdfsEnvironment, targetPath)) {
                         if (currentPath.isPresent() && currentPath.get().equals(targetPath)) {
@@ -1808,7 +1804,7 @@ public class SemiTransactionalHiveMetastore
      * <p>
      * This method will not delete anything that's neither a directory nor a file.
      *
-     * @param queryIds prefix or suffix of files that should be deleted
+     * @param queryIds               prefix or suffix of files that should be deleted
      * @param deleteEmptyDirectories whether empty directories should be deleted
      */
     private static RecursiveDeleteResult recursiveDeleteFiles(HdfsEnvironment hdfsEnvironment, HdfsContext context, Path directory, Set<String> queryIds, boolean deleteEmptyDirectories)

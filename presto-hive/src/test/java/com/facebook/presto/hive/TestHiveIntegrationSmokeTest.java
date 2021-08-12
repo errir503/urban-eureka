@@ -107,6 +107,7 @@ import static com.facebook.presto.hive.HiveSessionProperties.PUSHDOWN_FILTER_ENA
 import static com.facebook.presto.hive.HiveSessionProperties.RCFILE_OPTIMIZED_WRITER_ENABLED;
 import static com.facebook.presto.hive.HiveSessionProperties.SORTED_WRITE_TEMP_PATH_SUBDIRECTORY_COUNT;
 import static com.facebook.presto.hive.HiveSessionProperties.SORTED_WRITE_TO_TEMP_PATH_ENABLED;
+import static com.facebook.presto.hive.HiveSessionProperties.TEMPORARY_STAGING_DIRECTORY_ENABLED;
 import static com.facebook.presto.hive.HiveSessionProperties.getInsertExistingPartitionsBehavior;
 import static com.facebook.presto.hive.HiveStorageFormat.PAGEFILE;
 import static com.facebook.presto.hive.HiveTableProperties.BUCKETED_BY_PROPERTY;
@@ -1140,6 +1141,28 @@ public class TestHiveIntegrationSmokeTest
                 "SELECT custkey, comment " +
                 "FROM customer " +
                 "WHERE custkey < 0", 0);
+        assertQuery("SELECT count(*) FROM " + tableName, "SELECT 0");
+        assertUpdate("DROP TABLE " + tableName);
+    }
+
+    @Test
+    public void testCreateEmptyUnpartitionedBucketedTableNoStaging()
+    {
+        String tableName = "test_create_empty_bucketed_table_no_staging";
+        assertUpdate(
+                Session.builder(getSession())
+                        .setCatalogSessionProperty(catalog, TEMPORARY_STAGING_DIRECTORY_ENABLED, "false")
+                        .build(),
+                "" +
+                        "CREATE TABLE " + tableName + " " +
+                        "WITH (" +
+                        "   bucketed_by = ARRAY[ 'custkey' ], " +
+                        "   bucket_count = 11 " +
+                        ") " +
+                        "AS " +
+                        "SELECT custkey, comment " +
+                        "FROM customer " +
+                        "WHERE custkey < 0", 0);
         assertQuery("SELECT count(*) FROM " + tableName, "SELECT 0");
         assertUpdate("DROP TABLE " + tableName);
     }
@@ -5371,9 +5394,9 @@ public class TestHiveIntegrationSmokeTest
         assertQueryFails(
                 "CREATE MATERIALIZED VIEW test_customer_view AS SELECT name FROM test_customer_base",
                 format(
-                ".* Materialized view '%s.%s.test_customer_view' already exists",
-                getSession().getCatalog().get(),
-                getSession().getSchema().get()));
+                        ".* Materialized view '%s.%s.test_customer_view' already exists",
+                        getSession().getCatalog().get(),
+                        getSession().getSchema().get()));
         assertQuerySucceeds("CREATE MATERIALIZED VIEW IF NOT EXISTS test_customer_view AS SELECT name FROM test_customer_base");
 
         // Test partition mapping
@@ -5424,15 +5447,15 @@ public class TestHiveIntegrationSmokeTest
     public void testShowCreateOnMaterializedView()
     {
         String createMaterializedViewSql = formatSqlText(format("CREATE MATERIALIZED VIEW %s.%s.test_customer_view_1\n" +
-                "WITH (\n" +
-                "   format = 'ORC'," +
-                "   partitioned_by = ARRAY['nationkey']\n" +
-                retentionDays(15) +
-                ") AS SELECT\n" +
-                "  name\n" +
-                ", nationkey\n" +
-                "FROM\n" +
-                "  test_customer_base_1",
+                        "WITH (\n" +
+                        "   format = 'ORC'," +
+                        "   partitioned_by = ARRAY['nationkey']\n" +
+                        retentionDays(15) +
+                        ") AS SELECT\n" +
+                        "  name\n" +
+                        ", nationkey\n" +
+                        "FROM\n" +
+                        "  test_customer_base_1",
                 getSession().getCatalog().get(),
                 getSession().getSchema().get()));
 
