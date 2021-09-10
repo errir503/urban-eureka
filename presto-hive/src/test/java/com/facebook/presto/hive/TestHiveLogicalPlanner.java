@@ -83,6 +83,7 @@ import java.util.stream.Collectors;
 
 import static com.facebook.presto.SystemSessionProperties.JOIN_REORDERING_STRATEGY;
 import static com.facebook.presto.SystemSessionProperties.OPTIMIZE_METADATA_QUERIES;
+import static com.facebook.presto.SystemSessionProperties.OPTIMIZE_METADATA_QUERIES_IGNORE_STATS;
 import static com.facebook.presto.SystemSessionProperties.PUSHDOWN_DEREFERENCE_ENABLED;
 import static com.facebook.presto.SystemSessionProperties.QUERY_OPTIMIZATION_WITH_MATERIALIZED_VIEW_ENABLED;
 import static com.facebook.presto.common.function.OperatorType.EQUAL;
@@ -543,6 +544,9 @@ public class TestHiveLogicalPlanner
         Session optimizeMetadataQueries = Session.builder(this.getQueryRunner().getDefaultSession())
                 .setSystemProperty(OPTIMIZE_METADATA_QUERIES, Boolean.toString(true))
                 .build();
+        Session optimizeMetadataQueriesIgnoreStats = Session.builder(this.getQueryRunner().getDefaultSession())
+                .setSystemProperty(OPTIMIZE_METADATA_QUERIES_IGNORE_STATS, Boolean.toString(true))
+                .build();
         Session shufflePartitionColumns = Session.builder(this.getQueryRunner().getDefaultSession())
                 .setCatalogSessionProperty(HIVE_CATALOG, SHUFFLE_PARTITIONED_COLUMNS_FOR_TABLE_WRITE, Boolean.toString(true))
                 .build();
@@ -585,6 +589,16 @@ public class TestHiveLogicalPlanner
                                     PlanMatchPattern.tableScan("test_metadata_aggregation_folding_with_empty_partitions")),
                             anyTree(
                                     PlanMatchPattern.tableScan("test_metadata_aggregation_folding_with_empty_partitions"))));
+            // Ignore metastore stats. Enable rewrite.
+            assertPlan(
+                    optimizeMetadataQueriesIgnoreStats,
+                    "SELECT * FROM test_metadata_aggregation_folding_with_empty_partitions WHERE ds = (SELECT max(ds) from test_metadata_aggregation_folding_with_empty_partitions)",
+                    anyTree(
+                            join(
+                                    INNER,
+                                    ImmutableList.of(),
+                                    tableScan("test_metadata_aggregation_folding_with_empty_partitions", getSingleValueColumnDomain("ds", "2020-07-20"), TRUE_CONSTANT, ImmutableSet.of("ds")),
+                                    anyTree(any()))));
             // Max ds matching the filter has stats. Enable rewrite.
             assertPlan(
                     optimizeMetadataQueries,
@@ -635,6 +649,16 @@ public class TestHiveLogicalPlanner
                     optimizeMetadataQueries,
                     "SELECT MIN(ds), MAX(ds) FROM test_metadata_aggregation_folding_with_empty_partitions WHERE ds BETWEEN '2020-06-30' AND '2020-07-03'",
                     anyTree(tableScanWithConstraint("test_metadata_aggregation_folding_with_empty_partitions", ImmutableMap.of("ds", multipleValues(VARCHAR, utf8Slices("2020-06-30", "2020-07-01", "2020-07-02"))))));
+            // Ignore metadata stats. Always enable rewrite.
+            assertPlan(
+                    optimizeMetadataQueriesIgnoreStats,
+                    "SELECT MIN(ds), MAX(ds) FROM test_metadata_aggregation_folding_with_empty_partitions WHERE ds BETWEEN '2020-06-30' AND '2020-07-03'",
+                    anyTree(
+                            project(
+                                    ImmutableMap.of(
+                                            "min", expression("'2020-06-30'"),
+                                            "max", expression("'2020-07-02'")),
+                                    anyTree(values()))));
             // Both resulting partitions have stats. Enable rewrite.
             assertPlan(
                     optimizeMetadataQueries,
@@ -2466,6 +2490,44 @@ public class TestHiveLogicalPlanner
             queryRunner.execute("DROP MATERIALIZED VIEW IF EXISTS " + view);
             queryRunner.execute("DROP TABLE IF EXISTS " + table1);
             queryRunner.execute("DROP TABLE IF EXISTS " + table2);
+        }
+    }
+
+    @Test
+    public void testMaterializedViewSubqueryShapes()
+    {
+        QueryRunner queryRunner = getQueryRunner();
+        String view1 = "orders_key_view1";
+        String view2 = "orders_key_view2";
+        String view3 = "orders_key_view3";
+        String view4 = "orders_key_view4";
+        String table1 = "orders_key_partitioned_1";
+        String table2 = "orders_key_partitioned_2";
+        String table3 = "orders_key_partitioned_3";
+        try {
+            queryRunner.execute(format("CREATE TABLE %s WITH (partitioned_by = ARRAY['ds']) AS SELECT 1 as a, '2020-01-01' as ds", table1));
+            queryRunner.execute(format("CREATE TABLE %s WITH (partitioned_by = ARRAY['ds']) AS SELECT 1 as a, '2020-01-01' as ds", table2));
+            queryRunner.execute(format("CREATE TABLE %s WITH (partitioned_by = ARRAY['ds']) AS SELECT 1 as a, '2020-01-01' as ds", table3));
+
+            assertQueryFails(format("CREATE MATERIALIZED VIEW %s WITH (partitioned_by = ARRAY['ds']) " +
+                            "AS SELECT t1.a, t1.ds FROM %s t1 WHERE (t1.a IN (SELECT t2.a FROM %s t2 WHERE t1.ds = t2.ds))", view1, table1, table2),
+                    ".*Subqueries are not supported for materialized view.*");
+
+            assertQueryFails(format("CREATE MATERIALIZED VIEW %s WITH (partitioned_by = ARRAY['ds']) " +
+                            "AS SELECT t1.a, t1.ds FROM %s t1 join (select t2.ds AS t2_ds, t2.a from %s t2 where (t2.a IN (SELECT t3.a FROM %s t3 WHERE t2.ds = t3.ds))) ON t1.ds = t2_ds", view2, table1, table2, table3),
+                    ".*Subqueries are not supported for materialized view.*");
+
+            assertUpdate(format("CREATE MATERIALIZED VIEW %s WITH (partitioned_by = ARRAY['ds']) " +
+                            "AS SELECT t1.a, t1.ds FROM %s t1 join (select t2.ds AS t2_ds, t2.a from %s t2 where t2.a <= 420) ON t1.ds = t2_ds", view3, table1, table2));
+        }
+        finally {
+            queryRunner.execute("DROP MATERIALIZED VIEW IF EXISTS " + view1);
+            queryRunner.execute("DROP MATERIALIZED VIEW IF EXISTS " + view2);
+            queryRunner.execute("DROP MATERIALIZED VIEW IF EXISTS " + view3);
+            queryRunner.execute("DROP MATERIALIZED VIEW IF EXISTS " + view4);
+            queryRunner.execute("DROP TABLE IF EXISTS " + table1);
+            queryRunner.execute("DROP TABLE IF EXISTS " + table2);
+            queryRunner.execute("DROP TABLE IF EXISTS " + table3);
         }
     }
 
