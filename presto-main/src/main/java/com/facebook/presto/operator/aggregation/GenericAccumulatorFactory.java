@@ -26,6 +26,7 @@ import com.facebook.presto.common.block.ColumnarRow;
 import com.facebook.presto.common.block.LongArrayBlock;
 import com.facebook.presto.common.block.RowBlock;
 import com.facebook.presto.common.block.RowBlockBuilder;
+import com.facebook.presto.common.block.RunLengthEncodedBlock;
 import com.facebook.presto.common.block.SortOrder;
 import com.facebook.presto.common.type.ArrayType;
 import com.facebook.presto.common.type.RowType;
@@ -52,12 +53,14 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static com.facebook.presto.common.Page.wrapBlocksWithoutCopy;
 import static com.facebook.presto.common.block.ColumnarArray.toColumnarArray;
 import static com.facebook.presto.common.block.ColumnarRow.toColumnarRow;
 import static com.facebook.presto.common.type.BigintType.BIGINT;
 import static com.facebook.presto.common.type.BooleanType.BOOLEAN;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.lang.Long.max;
 import static java.util.Objects.isNull;
 import static java.util.Objects.requireNonNull;
@@ -175,7 +178,10 @@ public class GenericAccumulatorFactory
         }
 
         checkState(accumulator instanceof FinalOnlyGroupedAccumulator);
-        return new SpillableFinalOnlyGroupedAccumulator(sourceTypes, (FinalOnlyGroupedAccumulator) accumulator);
+        ImmutableList.Builder<Integer> aggregateInputChannels = ImmutableList.builder();
+        aggregateInputChannels.addAll(inputChannels);
+        maskChannel.ifPresent(aggregateInputChannels::add);
+        return new SpillableFinalOnlyGroupedAccumulator(sourceTypes, aggregateInputChannels.build(), (FinalOnlyGroupedAccumulator) accumulator);
     }
 
     @Override
@@ -259,7 +265,7 @@ public class GenericAccumulatorFactory
     {
         private final Accumulator accumulator;
         private final MarkDistinctHash hash;
-        private final Optional<Integer> maskChannel;
+        private final int maskChannel;
 
         private DistinctingAccumulator(
                 Accumulator accumulator,
@@ -271,7 +277,7 @@ public class GenericAccumulatorFactory
                 UpdateMemory updateMemory)
         {
             this.accumulator = requireNonNull(accumulator, "accumulator is null");
-            this.maskChannel = requireNonNull(maskChannel, "maskChannel is null");
+            this.maskChannel = requireNonNull(maskChannel, "maskChannel is null").orElse(-1);
 
             hash = new MarkDistinctHash(
                     session,
@@ -309,9 +315,13 @@ public class GenericAccumulatorFactory
         public void addInput(Page page)
         {
             // 1. filter out positions based on mask, if present
-            Page filtered = maskChannel
-                    .map(channel -> filter(page, page.getBlock(channel)))
-                    .orElse(page);
+            Page filtered;
+            if (maskChannel >= 0) {
+                filtered = filter(page, page.getBlock(maskChannel));
+            }
+            else {
+                filtered = page;
+            }
 
             if (filtered.getPositionCount() == 0) {
                 return;
@@ -353,10 +363,21 @@ public class GenericAccumulatorFactory
 
     private static Page filter(Page page, Block mask)
     {
+        int positions = mask.getPositionCount();
+        if (positions > 0 && mask instanceof RunLengthEncodedBlock) {
+            // must have at least 1 position to be able to check the value at position 0
+            boolean isNull = mask.mayHaveNull() && mask.isNull(0);
+            if (!isNull && BOOLEAN.getBoolean(mask, 0)) {
+                return page;
+            }
+            else {
+                return page.getPositions(new int[0], 0, 0);
+            }
+        }
         boolean mayHaveNull = mask.mayHaveNull();
-        int[] ids = new int[mask.getPositionCount()];
+        int[] ids = new int[positions];
         int next = 0;
-        for (int i = 0; i < page.getPositionCount(); ++i) {
+        for (int i = 0; i < ids.length; ++i) {
             boolean isNull = mayHaveNull && mask.isNull(i);
             if (!isNull && BOOLEAN.getBoolean(mask, i)) {
                 ids[next++] = i;
@@ -374,7 +395,7 @@ public class GenericAccumulatorFactory
     {
         private final GroupedAccumulator accumulator;
         private final MarkDistinctHash hash;
-        private final Optional<Integer> maskChannel;
+        private final int maskChannel;
 
         private DistinctingGroupedAccumulator(
                 GroupedAccumulator accumulator,
@@ -386,7 +407,7 @@ public class GenericAccumulatorFactory
                 UpdateMemory updateMemory)
         {
             this.accumulator = requireNonNull(accumulator, "accumulator is null");
-            this.maskChannel = requireNonNull(maskChannel, "maskChannel is null");
+            this.maskChannel = requireNonNull(maskChannel, "maskChannel is null").orElse(-1);
 
             List<Type> types = ImmutableList.<Type>builder()
                     .add(BIGINT) // group id column
@@ -431,9 +452,13 @@ public class GenericAccumulatorFactory
             Page withGroup = page.prependColumn(groupIdsBlock);
 
             // 1. filter out positions based on mask, if present
-            Page filtered = maskChannel
-                    .map(channel -> filter(withGroup, withGroup.getBlock(channel + 1))) // offset by one because of group id in column 0
-                    .orElse(withGroup);
+            Page filtered;
+            if (maskChannel >= 0) {
+                filtered = filter(withGroup, withGroup.getBlock(maskChannel + 1)); // offset by one because of group id in column 0
+            }
+            else {
+                filtered = withGroup;
+            }
 
             // 2. compute a mask for the distinct rows (including the group id)
             Work<Block> work = hash.markDistinctRows(filtered);
@@ -615,7 +640,9 @@ public class GenericAccumulatorFactory
         private static final int INSTANCE_SIZE = ClassLayout.parseClass(SpillableFinalOnlyGroupedAccumulator.class).instanceSize();
 
         private final FinalOnlyGroupedAccumulator delegate;
+        private final List<Type> sourceTypes;
         private final List<Type> spillingTypes;
+        private final List<Integer> aggregateInputChannels;
 
         private ObjectBigArray<GroupIdPage> rawInputs = new ObjectBigArray<>();
         private IntBigArray groupIdCount = new IntBigArray();
@@ -624,10 +651,14 @@ public class GenericAccumulatorFactory
         private long blockBuildersSizeInBytes;
         private long rawInputsLength;
 
-        public SpillableFinalOnlyGroupedAccumulator(List<Type> types, FinalOnlyGroupedAccumulator delegate)
+        public SpillableFinalOnlyGroupedAccumulator(List<Type> sourceTypes, List<Integer> aggregateInputChannels, FinalOnlyGroupedAccumulator delegate)
         {
+            this.sourceTypes = requireNonNull(sourceTypes, "types is null");
+            this.aggregateInputChannels = requireNonNull(aggregateInputChannels, "aggregateInputChannels is null");
             this.delegate = requireNonNull(delegate, "delegate is null");
-            this.spillingTypes = requireNonNull(types, "types is null");
+            this.spillingTypes = aggregateInputChannels.stream()
+                    .map(sourceTypes::get)
+                    .collect(toImmutableList());
         }
 
         @Override
@@ -657,7 +688,14 @@ public class GenericAccumulatorFactory
         {
             checkState(rawInputs != null && blockBuilders == null);
             rawInputs.ensureCapacity(rawInputsLength);
-            GroupIdPage groupIdPage = new GroupIdPage(groupIdsBlock, page);
+
+            // Create a new Page that only have channels which will be consumed by the aggregate
+            Block[] blocks = new Block[aggregateInputChannels.size()];
+            for (int i = 0; i < aggregateInputChannels.size(); i++) {
+                blocks[i] = page.getBlock(aggregateInputChannels.get(i));
+            }
+            Page accumulatorInputPage = wrapBlocksWithoutCopy(page.getPositionCount(), blocks);
+            GroupIdPage groupIdPage = new GroupIdPage(groupIdsBlock, accumulatorInputPage);
             rawInputsSizeInBytes += groupIdPage.getRetainedSizeInBytes();
             rawInputs.set(rawInputsLength, groupIdPage);
             // TODO(sakshams) deduplicate inputs for DISTINCT accumulator case by doing page compaction
@@ -782,7 +820,20 @@ public class GenericAccumulatorFactory
             checkState(rawInputs != null && blockBuilders == null);
             for (int i = 0; i < rawInputsLength; i++) {
                 GroupIdPage groupIdPage = rawInputs.get(i);
-                delegate.addInput(groupIdPage.getGroupByIdBlock(), groupIdPage.getPage());
+                // Before pushing the page to delegate, restore it back to it original structure
+                // in terms of number of channels. Channels which are not consumed by the accumulator
+                // will be replaced with null block
+                Page page = groupIdPage.getPage();
+                Block[] blocks = new Block[sourceTypes.size()];
+                for (int channel = 0; channel < sourceTypes.size(); channel++) {
+                    if (aggregateInputChannels.contains(channel)) {
+                        blocks[channel] = page.getBlock(aggregateInputChannels.indexOf(channel));
+                    }
+                    else {
+                        blocks[channel] = RunLengthEncodedBlock.create(sourceTypes.get(channel), null, page.getPositionCount());
+                    }
+                }
+                delegate.addInput(groupIdPage.getGroupByIdBlock(), wrapBlocksWithoutCopy(page.getPositionCount(), blocks));
             }
 
             rawInputs = null;
