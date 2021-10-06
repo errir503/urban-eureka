@@ -93,6 +93,7 @@ public class TestFeaturesConfig
                 .setJoinSpillingEnabled(true)
                 .setAggregationSpillEnabled(true)
                 .setDistinctAggregationSpillEnabled(true)
+                .setDedupBasedDistinctAggregationSpillEnabled(false)
                 .setOrderByAggregationSpillEnabled(true)
                 .setWindowSpillEnabled(true)
                 .setOrderBySpillEnabled(true)
@@ -179,6 +180,7 @@ public class TestFeaturesConfig
                 .setPartialResultsMaxExecutionTimeMultiplier(2.0)
                 .setMaterializedViewDataConsistencyEnabled(true)
                 .setQueryOptimizationWithMaterializedViewEnabled(false)
+                .setVerboseRuntimeStatsEnabled(false)
                 .setAggregationIfToFilterRewriteStrategy(AggregationIfToFilterRewriteStrategy.DISABLED));
     }
 
@@ -242,6 +244,7 @@ public class TestFeaturesConfig
                 .put("experimental.join-spill-enabled", "false")
                 .put("experimental.aggregation-spill-enabled", "false")
                 .put("experimental.distinct-aggregation-spill-enabled", "false")
+                .put("experimental.dedup-based-distinct-aggregation-spill-enabled", "true")
                 .put("experimental.order-by-aggregation-spill-enabled", "false")
                 .put("experimental.window-spill-enabled", "false")
                 .put("experimental.order-by-spill-enabled", "false")
@@ -309,6 +312,7 @@ public class TestFeaturesConfig
                 .put("offset-clause-enabled", "true")
                 .put("materialized-view-data-consistency-enabled", "false")
                 .put("query-optimization-with-materialized-view-enabled", "true")
+                .put("verbose-runtime-stats-enabled", "true")
                 .put("optimizer.aggregation-if-to-filter-rewrite-strategy", "filter_with_if")
                 .build();
 
@@ -364,6 +368,7 @@ public class TestFeaturesConfig
                 .setJoinSpillingEnabled(false)
                 .setAggregationSpillEnabled(false)
                 .setDistinctAggregationSpillEnabled(false)
+                .setDedupBasedDistinctAggregationSpillEnabled(true)
                 .setOrderByAggregationSpillEnabled(false)
                 .setWindowSpillEnabled(false)
                 .setOrderBySpillEnabled(false)
@@ -437,6 +442,7 @@ public class TestFeaturesConfig
                 .setPartialResultsMaxExecutionTimeMultiplier(1.5)
                 .setMaterializedViewDataConsistencyEnabled(false)
                 .setQueryOptimizationWithMaterializedViewEnabled(true)
+                .setVerboseRuntimeStatsEnabled(true)
                 .setAggregationIfToFilterRewriteStrategy(AggregationIfToFilterRewriteStrategy.FILTER_WITH_IF);
         assertFullMapping(properties, expected);
     }
