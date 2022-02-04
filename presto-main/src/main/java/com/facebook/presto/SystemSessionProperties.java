@@ -120,6 +120,7 @@ public final class SystemSessionProperties
     public static final String SPLIT_CONCURRENCY_ADJUSTMENT_INTERVAL = "split_concurrency_adjustment_interval";
     public static final String OPTIMIZE_METADATA_QUERIES = "optimize_metadata_queries";
     public static final String OPTIMIZE_METADATA_QUERIES_IGNORE_STATS = "optimize_metadata_queries_ignore_stats";
+    public static final String OPTIMIZE_METADATA_QUERIES_CALL_THRESHOLD = "optimize_metadata_queries_call_threshold";
     public static final String FAST_INEQUALITY_JOINS = "fast_inequality_joins";
     public static final String QUERY_PRIORITY = "query_priority";
     public static final String SPILL_ENABLED = "spill_enabled";
@@ -127,6 +128,8 @@ public final class SystemSessionProperties
     public static final String AGGREGATION_SPILL_ENABLED = "aggregation_spill_enabled";
     public static final String DISTINCT_AGGREGATION_SPILL_ENABLED = "distinct_aggregation_spill_enabled";
     public static final String DEDUP_BASED_DISTINCT_AGGREGATION_SPILL_ENABLED = "dedup_based_distinct_aggregation_spill_enabled";
+    public static final String DISTINCT_AGGREGATION_LARGE_BLOCK_SPILL_ENABLED = "distinct_aggregation_large_block_spill_enabled";
+    public static final String DISTINCT_AGGREGATION_LARGE_BLOCK_SIZE_THRESHOLD = "distinct_aggregation_large_block_size_threshold";
     public static final String ORDER_BY_AGGREGATION_SPILL_ENABLED = "order_by_aggregation_spill_enabled";
     public static final String WINDOW_SPILL_ENABLED = "window_spill_enabled";
     public static final String ORDER_BY_SPILL_ENABLED = "order_by_spill_enabled";
@@ -528,6 +531,11 @@ public final class SystemSessionProperties
                         featuresConfig.isOptimizeMetadataQueriesIgnoreStats(),
                         false),
                 integerProperty(
+                        OPTIMIZE_METADATA_QUERIES_CALL_THRESHOLD,
+                        "The threshold number of service calls to metastore, used in optimization for metadata queries",
+                        featuresConfig.getOptimizeMetadataQueriesCallThreshold(),
+                        false),
+                integerProperty(
                         QUERY_PRIORITY,
                         "The priority of queries. Larger numbers are higher priority",
                         1,
@@ -645,6 +653,20 @@ public final class SystemSessionProperties
                         "Perform deduplication of input data for distinct aggregates before spilling",
                         featuresConfig.isDedupBasedDistinctAggregationSpillEnabled(),
                         false),
+                booleanProperty(
+                        DISTINCT_AGGREGATION_LARGE_BLOCK_SPILL_ENABLED,
+                        "Spill large block to a separate spill file",
+                        featuresConfig.isDistinctAggregationLargeBlockSpillEnabled(),
+                        false),
+                new PropertyMetadata<>(
+                        DISTINCT_AGGREGATION_LARGE_BLOCK_SIZE_THRESHOLD,
+                        "Block size threshold beyond which it will be spilled into a separate spill file",
+                        VARCHAR,
+                        DataSize.class,
+                        featuresConfig.getDistinctAggregationLargeBlockSizeThreshold(),
+                        false,
+                        value -> DataSize.valueOf((String) value),
+                        DataSize::toString),
                 booleanProperty(
                         ORDER_BY_AGGREGATION_SPILL_ENABLED,
                         "Enable spill for order-by aggregations if spill_enabled and aggregation_spill_enabled",
@@ -1397,6 +1419,11 @@ public final class SystemSessionProperties
         return session.getSystemProperty(OPTIMIZE_METADATA_QUERIES_IGNORE_STATS, Boolean.class);
     }
 
+    public static int getOptimizeMetadataQueriesCallThreshold(Session session)
+    {
+        return session.getSystemProperty(OPTIMIZE_METADATA_QUERIES_CALL_THRESHOLD, Integer.class);
+    }
+
     public static DataSize getQueryMaxMemory(Session session)
     {
         return session.getSystemProperty(QUERY_MAX_MEMORY, DataSize.class);
@@ -1556,6 +1583,16 @@ public final class SystemSessionProperties
     public static boolean isDedupBasedDistinctAggregationSpillEnabled(Session session)
     {
         return session.getSystemProperty(DEDUP_BASED_DISTINCT_AGGREGATION_SPILL_ENABLED, Boolean.class);
+    }
+
+    public static boolean isDistinctAggregationLargeBlockSpillEnabled(Session session)
+    {
+        return session.getSystemProperty(DISTINCT_AGGREGATION_LARGE_BLOCK_SPILL_ENABLED, Boolean.class);
+    }
+
+    public static DataSize getDistinctAggregationLargeBlockSizeThreshold(Session session)
+    {
+        return session.getSystemProperty(DISTINCT_AGGREGATION_LARGE_BLOCK_SIZE_THRESHOLD, DataSize.class);
     }
 
     public static boolean isOrderByAggregationSpillEnabled(Session session)
