@@ -124,6 +124,7 @@ public class TestHiveClientConfig
                 .setPartitionStatisticsBasedOptimizationEnabled(false)
                 .setS3SelectPushdownEnabled(false)
                 .setS3SelectPushdownMaxConnections(500)
+                .setStreamingAggregationEnabled(false)
                 .setTemporaryStagingDirectoryEnabled(true)
                 .setTemporaryStagingDirectoryPath("/tmp/presto-${USER}")
                 .setTemporaryTableSchema("default")
@@ -157,10 +158,12 @@ public class TestHiveClientConfig
                 .setPartitionLeaseDuration(new Duration(0, TimeUnit.SECONDS))
                 .setMaterializedViewMissingPartitionsThreshold(100)
                 .setLooseMemoryAccountingEnabled(false)
+                .setReadColumnIndexFilter(false)
                 .setSizeBasedSplitWeightsEnabled(true)
                 .setMinimumAssignedSplitWeight(0.05)
                 .setUserDefinedTypeEncodingEnabled(false)
-                .setUseRecordPageSourceForCustomSplit(true));
+                .setUseRecordPageSourceForCustomSplit(true)
+                .setFileSplittable(true));
     }
 
     @Test
@@ -245,6 +248,7 @@ public class TestHiveClientConfig
                 .put("hive.partition-statistics-based-optimization-enabled", "true")
                 .put("hive.s3select-pushdown.enabled", "true")
                 .put("hive.s3select-pushdown.max-connections", "1234")
+                .put("hive.streaming-aggregation-enabled", "true")
                 .put("hive.temporary-staging-directory-enabled", "false")
                 .put("hive.temporary-staging-directory-path", "updated")
                 .put("hive.temporary-table-schema", "other")
@@ -278,10 +282,12 @@ public class TestHiveClientConfig
                 .put("hive.loose-memory-accounting-enabled", "true")
                 .put("hive.verbose-runtime-stats-enabled", "true")
                 .put("hive.materialized-view-missing-partitions-threshold", "50")
+                .put("hive.parquet-column-index-filter-enabled", "true")
                 .put("hive.size-based-split-weights-enabled", "false")
                 .put("hive.user-defined-type-encoding-enabled", "true")
                 .put("hive.minimum-assigned-split-weight", "1.0")
                 .put("hive.use-record-page-source-for-custom-split", "false")
+                .put("hive.file-splittable", "false")
                 .build();
 
         HiveClientConfig expected = new HiveClientConfig()
@@ -363,6 +369,7 @@ public class TestHiveClientConfig
                 .setPartitionStatisticsBasedOptimizationEnabled(true)
                 .setS3SelectPushdownEnabled(true)
                 .setS3SelectPushdownMaxConnections(1234)
+                .setStreamingAggregationEnabled(true)
                 .setTemporaryStagingDirectoryEnabled(false)
                 .setTemporaryStagingDirectoryPath("updated")
                 .setTemporaryTableSchema("other")
@@ -396,10 +403,12 @@ public class TestHiveClientConfig
                 .setPartitionLeaseDuration(new Duration(4, TimeUnit.HOURS))
                 .setMaterializedViewMissingPartitionsThreshold(50)
                 .setLooseMemoryAccountingEnabled(true)
+                .setReadColumnIndexFilter(true)
                 .setSizeBasedSplitWeightsEnabled(false)
                 .setMinimumAssignedSplitWeight(1.0)
                 .setUserDefinedTypeEncodingEnabled(true)
-                .setUseRecordPageSourceForCustomSplit(false);
+                .setUseRecordPageSourceForCustomSplit(false)
+                .setFileSplittable(false);
 
         ConfigAssertions.assertFullMapping(properties, expected);
     }

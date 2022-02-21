@@ -19,6 +19,8 @@ import com.facebook.presto.operator.aggregation.arrayagg.ArrayAggGroupImplementa
 import com.facebook.presto.operator.aggregation.histogram.HistogramGroupImplementation;
 import com.facebook.presto.operator.aggregation.multimapagg.MultimapAggGroupImplementation;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationIfToFilterRewriteStrategy;
+import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType;
+import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.PartialAggregationStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.PartitioningPrecisionStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.SingleStreamSpillerChoice;
@@ -34,8 +36,6 @@ import static com.facebook.airlift.configuration.testing.ConfigAssertions.assert
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartitioningMergingStrategy.LEGACY;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartitioningMergingStrategy.TOP_DOWN;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType.BROADCAST;
-import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType.PARTITIONED;
-import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy.ELIMINATE_CROSS_JOINS;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy.NONE;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.PartialMergePushdownStrategy.PUSH_THROUGH_LOW_MEMORY_OPERATORS;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.SPILLER_SPILL_PATH;
@@ -60,7 +60,7 @@ public class TestFeaturesConfig
                 .setMemoryCostWeight(10)
                 .setNetworkCostWeight(15)
                 .setDistributedIndexJoinsEnabled(false)
-                .setJoinDistributionType(PARTITIONED)
+                .setJoinDistributionType(JoinDistributionType.AUTOMATIC)
                 .setJoinMaxBroadcastTableSize(new DataSize(100, MEGABYTE))
                 .setGroupedExecutionEnabled(true)
                 .setRecoverableGroupedExecutionEnabled(false)
@@ -70,7 +70,7 @@ public class TestFeaturesConfig
                 .setFastInequalityJoins(true)
                 .setColocatedJoinsEnabled(true)
                 .setSpatialJoinsEnabled(true)
-                .setJoinReorderingStrategy(ELIMINATE_CROSS_JOINS)
+                .setJoinReorderingStrategy(JoinReorderingStrategy.AUTOMATIC)
                 .setPartialMergePushdownStrategy(FeaturesConfig.PartialMergePushdownStrategy.NONE)
                 .setMaxReorderedJoins(9)
                 .setRedistributeWrites(true)
@@ -187,7 +187,8 @@ public class TestFeaturesConfig
                 .setVerboseRuntimeStatsEnabled(false)
                 .setAggregationIfToFilterRewriteStrategy(AggregationIfToFilterRewriteStrategy.DISABLED)
                 .setHashBasedDistinctLimitEnabled(false)
-                .setHashBasedDistinctLimitThreshold(10000));
+                .setHashBasedDistinctLimitThreshold(10000)
+                .setStreamingForPartialAggregationEnabled(false));
     }
 
     @Test
@@ -326,6 +327,7 @@ public class TestFeaturesConfig
                 .put("optimizer.aggregation-if-to-filter-rewrite-strategy", "filter_with_if")
                 .put("hash-based-distinct-limit-enabled", "true")
                 .put("hash-based-distinct-limit-threshold", "500")
+                .put("streaming-for-partial-aggregation-enabled", "true")
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -461,7 +463,8 @@ public class TestFeaturesConfig
                 .setVerboseRuntimeStatsEnabled(true)
                 .setAggregationIfToFilterRewriteStrategy(AggregationIfToFilterRewriteStrategy.FILTER_WITH_IF)
                 .setHashBasedDistinctLimitEnabled(true)
-                .setHashBasedDistinctLimitThreshold(500);
+                .setHashBasedDistinctLimitThreshold(500)
+                .setStreamingForPartialAggregationEnabled(true);
         assertFullMapping(properties, expected);
     }
 

@@ -94,6 +94,7 @@ public final class HiveSessionProperties
     public static final String PARTITION_STATISTICS_BASED_OPTIMIZATION_ENABLED = "partition_stats_based_optimization_enabled";
     private static final String OPTIMIZE_MISMATCHED_BUCKET_COUNT = "optimize_mismatched_bucket_count";
     private static final String S3_SELECT_PUSHDOWN_ENABLED = "s3_select_pushdown_enabled";
+    public static final String STREAMING_AGGREGATION_ENABLED = "streaming_aggregation_enabled";
     public static final String SHUFFLE_PARTITIONED_COLUMNS_FOR_TABLE_WRITE = "shuffle_partitioned_columns_for_table_write";
     public static final String TEMPORARY_STAGING_DIRECTORY_ENABLED = "temporary_staging_directory_enabled";
     private static final String TEMPORARY_STAGING_DIRECTORY_PATH = "temporary_staging_directory_path";
@@ -130,10 +131,12 @@ public final class HiveSessionProperties
     public static final String VERBOSE_RUNTIME_STATS_ENABLED = "verbose_runtime_stats_enabled";
     private static final String DWRF_WRITER_STRIPE_CACHE_ENABLED = "dwrf_writer_stripe_cache_enabled";
     private static final String DWRF_WRITER_STRIPE_CACHE_SIZE = "dwrf_writer_stripe_cache_size";
+    public static final String USE_COLUMN_INDEX_FILTER = "use_column_index_filter";
     public static final String SIZE_BASED_SPLIT_WEIGHTS_ENABLED = "size_based_split_weights_enabled";
     public static final String MINIMUM_ASSIGNED_SPLIT_WEIGHT = "minimum_assigned_split_weight";
     private static final String USE_RECORD_PAGE_SOURCE_FOR_CUSTOM_SPLIT = "use_record_page_source_for_custom_split";
     public static final String MAX_INITIAL_SPLITS = "max_initial_splits";
+    public static final String FILE_SPLITTABLE = "file_splittable";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -413,6 +416,11 @@ public final class HiveSessionProperties
                         hiveClientConfig.isS3SelectPushdownEnabled(),
                         false),
                 booleanProperty(
+                        STREAMING_AGGREGATION_ENABLED,
+                        "Enable streaming aggregation execution",
+                        hiveClientConfig.isStreamingAggregationEnabled(),
+                        false),
+                booleanProperty(
                         TEMPORARY_STAGING_DIRECTORY_ENABLED,
                         "Should use temporary staging directory for write operations",
                         hiveClientConfig.isTemporaryStagingDirectoryEnabled(),
@@ -629,6 +637,11 @@ public final class HiveSessionProperties
                         orcFileWriterConfig.getDwrfStripeCacheMaxSize(),
                         false),
                 booleanProperty(
+                        USE_COLUMN_INDEX_FILTER,
+                        "should use column index statistics filtering",
+                        hiveClientConfig.getReadColumnIndexFilter(),
+                        false),
+                booleanProperty(
                         SIZE_BASED_SPLIT_WEIGHTS_ENABLED,
                         "Enable estimating split weights based on size in bytes",
                         hiveClientConfig.isSizeBasedSplitWeightsEnabled(),
@@ -657,6 +670,11 @@ public final class HiveSessionProperties
                         MAX_INITIAL_SPLITS,
                         "Hive max initial split count",
                         hiveClientConfig.getMaxInitialSplits(),
+                        true),
+                booleanProperty(
+                        FILE_SPLITTABLE,
+                        "If a hive file is splittable when coordinator schedules splits",
+                        hiveClientConfig.isFileSplittable(),
                         true));
     }
 
@@ -875,6 +893,11 @@ public final class HiveSessionProperties
     public static boolean isS3SelectPushdownEnabled(ConnectorSession session)
     {
         return session.getProperty(S3_SELECT_PUSHDOWN_ENABLED, Boolean.class);
+    }
+
+    public static boolean isStreamingAggregationEnabled(ConnectorSession session)
+    {
+        return session.getProperty(STREAMING_AGGREGATION_ENABLED, Boolean.class);
     }
 
     public static boolean isStatisticsEnabled(ConnectorSession session)
@@ -1118,6 +1141,11 @@ public final class HiveSessionProperties
         return session.getProperty(DWRF_WRITER_STRIPE_CACHE_SIZE, DataSize.class);
     }
 
+    public static boolean columnIndexFilterEnabled(ConnectorSession session)
+    {
+        return session.getProperty(USE_COLUMN_INDEX_FILTER, Boolean.class);
+    }
+
     public static boolean isSizeBasedSplitWeightsEnabled(ConnectorSession session)
     {
         return session.getProperty(SIZE_BASED_SPLIT_WEIGHTS_ENABLED, Boolean.class);
@@ -1136,5 +1164,10 @@ public final class HiveSessionProperties
     public static int getHiveMaxInitialSplitSize(ConnectorSession session)
     {
         return session.getProperty(MAX_INITIAL_SPLITS, Integer.class);
+    }
+
+    public static boolean isFileSplittable(ConnectorSession session)
+    {
+        return session.getProperty(FILE_SPLITTABLE, Boolean.class);
     }
 }
