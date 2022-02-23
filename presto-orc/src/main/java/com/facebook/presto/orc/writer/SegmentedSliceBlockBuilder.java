@@ -13,7 +13,7 @@
  */
 package com.facebook.presto.orc.writer;
 
-import com.facebook.presto.common.block.AbstractVariableWidthBlock;
+import com.facebook.presto.common.block.AbstractVariableWidthBlockBuilder;
 import com.facebook.presto.common.block.Block;
 import com.facebook.presto.common.block.BlockBuilder;
 import com.facebook.presto.common.block.BlockBuilderStatus;
@@ -25,6 +25,7 @@ import io.airlift.slice.XxHash64;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.util.Arrays;
+import java.util.OptionalInt;
 import java.util.function.BiConsumer;
 
 import static com.facebook.presto.orc.writer.SegmentedSliceBlockBuilder.Segments.INITIAL_SEGMENTS;
@@ -66,8 +67,7 @@ import static java.lang.String.format;
  * created for further appends.
  */
 public class SegmentedSliceBlockBuilder
-        extends AbstractVariableWidthBlock
-        implements BlockBuilder
+        extends AbstractVariableWidthBlockBuilder
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(SegmentedSliceBlockBuilder.class).instanceSize();
 
@@ -148,13 +148,19 @@ public class SegmentedSliceBlockBuilder
     }
 
     @Override
+    public OptionalInt fixedSizeInBytesPerPosition()
+    {
+        return OptionalInt.empty(); // size is variable based on the per element length
+    }
+
+    @Override
     public long getRegionSizeInBytes(int position, int length)
     {
         throw new UnsupportedOperationException("getRegionSizeInBytes is not supported by SegmentedSliceBlockBuilder");
     }
 
     @Override
-    public long getPositionsSizeInBytes(boolean[] positions)
+    public long getPositionsSizeInBytes(boolean[] positions, int usedPositionCount)
     {
         throw new UnsupportedOperationException("getPositionsSizeInBytes is not supported by SegmentedSliceBlockBuilder");
     }
@@ -206,6 +212,13 @@ public class SegmentedSliceBlockBuilder
     @Override
     public BlockBuilder writeBytes(Slice source, int sourceIndex, int length)
     {
+        initializeNewSegmentIfRequired();
+        openSliceOutput.writeBytes(source, sourceIndex, length);
+        return this;
+    }
+
+    private void initializeNewSegmentIfRequired()
+    {
         if (openSegmentOffset == 0) {
             // Expand Segments if necessary.
             if (openSegmentIndex >= offsets.length) {
@@ -218,6 +231,12 @@ public class SegmentedSliceBlockBuilder
                 offsets[openSegmentIndex] = new int[SEGMENT_SIZE + 1];
             }
         }
+    }
+
+    @Override
+    public AbstractVariableWidthBlockBuilder writeBytes(byte[] source, int sourceIndex, int length)
+    {
+        initializeNewSegmentIfRequired();
         openSliceOutput.writeBytes(source, sourceIndex, length);
         return this;
     }
