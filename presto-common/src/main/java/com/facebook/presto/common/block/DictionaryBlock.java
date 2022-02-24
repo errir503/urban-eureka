@@ -97,7 +97,7 @@ public class DictionaryBlock
         this.retainedSizeInBytes = INSTANCE_SIZE + dictionary.getRetainedSizeInBytes() + sizeOf(ids);
 
         if (dictionaryIsCompacted) {
-            this.sizeInBytes = this.retainedSizeInBytes;
+            this.sizeInBytes = dictionary.getSizeInBytes() + (Integer.BYTES * (long) positionCount);
             this.uniqueIds = dictionary.getPositionCount();
         }
     }
@@ -408,7 +408,11 @@ public class DictionaryBlock
             }
             newIds[i] = oldIndexToNewIndex.get(oldIndex);
         }
-        return new DictionaryBlock(dictionary.copyPositions(positionsToCopy.elements(), 0, positionsToCopy.size()), newIds);
+        return new DictionaryBlock(
+                length,
+                dictionary.copyPositions(positionsToCopy.elements(), 0, positionsToCopy.size()),
+                newIds,
+                true); // new dictionary is compact
     }
 
     @Override
