@@ -58,6 +58,7 @@ public class OrcOutputBuffer
     private static final int MAXIMUM_OUTPUT_BUFFER_CHUNK_SIZE = 1024 * 1024;
 
     private final int maxBufferSize;
+    private final int minCompressibleSize;
 
     private final ChunkedSliceOutput compressedOutputStream;
     private final CompressionBufferPool compressionBufferPool;
@@ -86,6 +87,7 @@ public class OrcOutputBuffer
 
         CompressionKind compressionKind = columnWriterOptions.getCompressionKind();
         this.maxBufferSize = compressionKind == CompressionKind.NONE ? maxBufferSize : maxBufferSize - PAGE_HEADER_SIZE;
+        this.minCompressibleSize = compressionKind.getMinCompressibleSize();
 
         this.buffer = new byte[INITIAL_BUFFER_SIZE];
         this.slice = wrappedBuffer(buffer);
@@ -445,12 +447,12 @@ public class OrcOutputBuffer
             return;
         }
 
-        checkArgument(length <= buffer.length, "Write chunk length must be less than compression buffer size");
+        checkArgument(length <= maxBufferSize, "Write chunk length must be less than max compression buffer size");
 
         boolean isCompressed = false;
         byte[] compressionBuffer = null;
         try {
-            if (compressor != null) {
+            if (compressor != null && length >= minCompressibleSize) {
                 int minCompressionBufferSize = compressor.maxCompressedLength(length);
                 compressionBuffer = compressionBufferPool.checkOut(minCompressionBufferSize);
                 int compressedSize = compressor.compress(chunk, offset, length, compressionBuffer, 0, compressionBuffer.length);
@@ -470,8 +472,8 @@ public class OrcOutputBuffer
                     throw new OrcEncryptionException("Encrypted data size %s exceeds limit of 2^23", length);
                 }
             }
-            int header = isCompressed ? length << 1 : (length << 1) + 1;
 
+            int header = isCompressed ? length << 1 : (length << 1) + 1;
             writeChunkedOutput(chunk, offset, length, header);
         }
         finally {
@@ -497,7 +499,7 @@ public class OrcOutputBuffer
         }
 
         while (length > 0) {
-            int chunkSize = Integer.min(length, buffer.length);
+            int chunkSize = Integer.min(length, maxBufferSize);
             writeChunkToOutputStream(bytes, bytesOffset, chunkSize);
             length -= chunkSize;
             bytesOffset += chunkSize;
