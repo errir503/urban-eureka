@@ -187,6 +187,7 @@ public class FeaturesConfig
     private boolean pushdownDereferenceEnabled;
     private boolean inlineSqlFunctions = true;
     private boolean checkAccessControlOnUtilizedColumnsOnly;
+    private boolean checkAccessControlWithSubfields;
     private boolean skipRedundantSort = true;
     private boolean isAllowWindowOrderByLiterals = true;
 
@@ -217,6 +218,8 @@ public class FeaturesConfig
     private boolean streamingForPartialAggregationEnabled;
 
     private int maxStageCountForEagerScheduling = 25;
+
+    private double hyperloglogStandardErrorWarningThreshold = 0.004;
 
     public enum PartitioningPrecisionStrategy
     {
@@ -1721,6 +1724,18 @@ public class FeaturesConfig
         return this;
     }
 
+    public boolean isCheckAccessControlWithSubfields()
+    {
+        return checkAccessControlWithSubfields;
+    }
+
+    @Config("check-access-control-with-subfields")
+    public FeaturesConfig setCheckAccessControlWithSubfields(boolean checkAccessControlWithSubfields)
+    {
+        this.checkAccessControlWithSubfields = checkAccessControlWithSubfields;
+        return this;
+    }
+
     public boolean isSkipRedundantSort()
     {
         return skipRedundantSort;
@@ -1983,6 +1998,19 @@ public class FeaturesConfig
     public FeaturesConfig setMaxStageCountForEagerScheduling(int maxStageCountForEagerScheduling)
     {
         this.maxStageCountForEagerScheduling = maxStageCountForEagerScheduling;
+        return this;
+    }
+
+    public double getHyperloglogStandardErrorWarningThreshold()
+    {
+        return hyperloglogStandardErrorWarningThreshold;
+    }
+
+    @Config("hyperloglog-standard-error-warning-threshold")
+    @ConfigDescription("aggregation functions can produce low-precision results when the max standard error lower than this value.")
+    public FeaturesConfig setHyperloglogStandardErrorWarningThreshold(double hyperloglogStandardErrorWarningThreshold)
+    {
+        this.hyperloglogStandardErrorWarningThreshold = hyperloglogStandardErrorWarningThreshold;
         return this;
     }
 }

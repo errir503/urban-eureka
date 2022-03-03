@@ -170,6 +170,7 @@ public class TestFeaturesConfig
                 .setWarnOnNoTableLayoutFilter("")
                 .setInlineSqlFunctions(true)
                 .setCheckAccessControlOnUtilizedColumnsOnly(false)
+                .setCheckAccessControlWithSubfields(false)
                 .setAllowWindowOrderByLiterals(true)
                 .setEnforceFixedDistributionForOutputOperator(false)
                 .setEmptyJoinOptimization(false)
@@ -189,7 +190,8 @@ public class TestFeaturesConfig
                 .setHashBasedDistinctLimitEnabled(false)
                 .setHashBasedDistinctLimitThreshold(10000)
                 .setStreamingForPartialAggregationEnabled(false)
-                .setMaxStageCountForEagerScheduling(25));
+                .setMaxStageCountForEagerScheduling(25)
+                .setHyperloglogStandardErrorWarningThreshold(0.004));
     }
 
     @Test
@@ -309,6 +311,7 @@ public class TestFeaturesConfig
                 .put("warn-on-no-table-layout-filter", "ry@nlikestheyankees,ds")
                 .put("inline-sql-functions", "false")
                 .put("check-access-control-on-utilized-columns-only", "true")
+                .put("check-access-control-with-subfields", "true")
                 .put("optimizer.skip-redundant-sort", "false")
                 .put("is-allow-window-order-by-literals", "false")
                 .put("enforce-fixed-distribution-for-output-operator", "true")
@@ -330,6 +333,7 @@ public class TestFeaturesConfig
                 .put("hash-based-distinct-limit-threshold", "500")
                 .put("streaming-for-partial-aggregation-enabled", "true")
                 .put("execution-policy.max-stage-count-for-eager-scheduling", "123")
+                .put("hyperloglog-standard-error-warning-threshold", "0.02")
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -447,6 +451,7 @@ public class TestFeaturesConfig
                 .setWarnOnNoTableLayoutFilter("ry@nlikestheyankees,ds")
                 .setInlineSqlFunctions(false)
                 .setCheckAccessControlOnUtilizedColumnsOnly(true)
+                .setCheckAccessControlWithSubfields(true)
                 .setSkipRedundantSort(false)
                 .setAllowWindowOrderByLiterals(false)
                 .setEnforceFixedDistributionForOutputOperator(true)
@@ -467,7 +472,8 @@ public class TestFeaturesConfig
                 .setHashBasedDistinctLimitEnabled(true)
                 .setHashBasedDistinctLimitThreshold(500)
                 .setStreamingForPartialAggregationEnabled(true)
-                .setMaxStageCountForEagerScheduling(123);
+                .setMaxStageCountForEagerScheduling(123)
+                .setHyperloglogStandardErrorWarningThreshold(0.02);
         assertFullMapping(properties, expected);
     }
 
