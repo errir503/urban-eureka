@@ -75,6 +75,7 @@ import java.util.stream.Collectors;
 
 import static com.facebook.presto.execution.QueryState.QUEUED;
 import static com.facebook.presto.execution.StageInfo.getAllStages;
+import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.graphvizDistributedPlan;
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.jsonDistributedPlan;
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.textDistributedPlan;
 import static com.google.common.collect.ImmutableList.toImmutableList;
@@ -144,6 +145,7 @@ public class QueryMonitor
                                 Optional.empty(),
                                 Optional.empty(),
                                 Optional.empty(),
+                                Optional.empty(),
                                 ImmutableList.of(),
                                 queryInfo.getSession().getTraceToken())));
     }
@@ -164,6 +166,7 @@ public class QueryMonitor
                         queryInfo.getPreparedQuery(),
                         queryInfo.getState().toString(),
                         queryInfo.getSelf(),
+                        Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
@@ -270,6 +273,7 @@ public class QueryMonitor
                 queryInfo.getSelf(),
                 createTextQueryPlan(queryInfo),
                 createJsonQueryPlan(queryInfo),
+                createGraphvizQueryPlan(queryInfo),
                 queryInfo.getOutputStage().flatMap(stage -> stageInfoCodec.toJsonWithLengthLimit(stage, maxJsonLimit)),
                 queryInfo.getRuntimeOptimizedStages().orElse(ImmutableList.of()).stream()
                         .map(stageId -> String.valueOf(stageId.getId()))
@@ -403,12 +407,30 @@ public class QueryMonitor
         try {
             if (queryInfo.getOutputStage().isPresent()) {
                 return Optional.of(jsonDistributedPlan(
-                        queryInfo.getOutputStage().get()));
+                        queryInfo.getOutputStage().get(),
+                        functionAndTypeManager));
             }
         }
         catch (Exception e) {
             // Don't fail to create event if the plan can not be created
             log.warn(e, "Error creating json plan for query %s: %s", queryInfo.getQueryId(), e);
+        }
+        return Optional.empty();
+    }
+
+    private Optional<String> createGraphvizQueryPlan(QueryInfo queryInfo)
+    {
+        try {
+            if (queryInfo.getOutputStage().isPresent()) {
+                return Optional.of(graphvizDistributedPlan(
+                        queryInfo.getOutputStage().get(),
+                        functionAndTypeManager,
+                        queryInfo.getSession().toSession(sessionPropertyManager)));
+            }
+        }
+        catch (Exception e) {
+            // Don't fail to create event if the graphviz plan can not be created
+            log.warn(e, "Error creating graphviz plan for query %s: %s", queryInfo.getQueryId(), e);
         }
         return Optional.empty();
     }

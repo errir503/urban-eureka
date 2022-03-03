@@ -58,10 +58,18 @@ public class PrestoSparkSessionProperties
     public static final String SPARK_MAX_HASH_PARTITION_COUNT = "spark_max_hash_partition_count";
     public static final String SPARK_MIN_HASH_PARTITION_COUNT = "spark_min_hash_partition_count";
     public static final String SPARK_RESOURCE_ALLOCATION_STRATEGY_ENABLED = "spark_resource_allocation_strategy_enabled";
+    public static final String SPARK_EXECUTOR_ALLOCATION_STRATEGY_ENABLED = "spark_executor_allocation_strategy_enabled";
+    public static final String SPARK_HASH_PARTITION_COUNT_ALLOCATION_STRATEGY_ENABLED = "spark_hash_partition_count_allocation_strategy_enabled";
     public static final String SPARK_RETRY_ON_OUT_OF_MEMORY_HIGHER_PARTITION_COUNT_ENABLED = "spark_retry_on_out_of_memory_higher_hash_partition_count_enabled";
     public static final String SPARK_HASH_PARTITION_COUNT_SCALING_FACTOR_ON_OUT_OF_MEMORY = "spark_hash_partition_count_scaling_factor_on_out_of_memory";
+    public static final String ADAPTIVE_JOIN_SIDE_SWITCHING_ENABLED = "adaptive_join_side_switching_enabled";
 
     private final List<PropertyMetadata<?>> sessionProperties;
+
+    public PrestoSparkSessionProperties()
+    {
+        this(new PrestoSparkConfig());
+    }
 
     @Inject
     public PrestoSparkSessionProperties(PrestoSparkConfig prestoSparkConfig)
@@ -159,7 +167,7 @@ public class PrestoSparkSessionProperties
                         SPARK_AVERAGE_INPUT_DATA_SIZE_PER_EXECUTOR,
                         "Average input data size per executor",
                         prestoSparkConfig.getAverageInputDataSizePerExecutor(),
-                       false),
+                        false),
                 integerProperty(
                         SPARK_MAX_EXECUTOR_COUNT,
                         "Maximum count of executors to run a query",
@@ -191,6 +199,16 @@ public class PrestoSparkSessionProperties
                         prestoSparkConfig.isSparkResourceAllocationStrategyEnabled(),
                         false),
                 booleanProperty(
+                        SPARK_EXECUTOR_ALLOCATION_STRATEGY_ENABLED,
+                        "Flag to enable optimized executor allocation strategy",
+                        prestoSparkConfig.isExecutorAllocationStrategyEnabled(),
+                        false),
+                booleanProperty(
+                        SPARK_HASH_PARTITION_COUNT_ALLOCATION_STRATEGY_ENABLED,
+                        "Flag to enable optimized hash partition count allocation strategy",
+                        prestoSparkConfig.isHashPartitionCountAllocationStrategyEnabled(),
+                        false),
+                booleanProperty(
                         SPARK_RETRY_ON_OUT_OF_MEMORY_HIGHER_PARTITION_COUNT_ENABLED,
                         "Increases hash partition count by scaling factor specified by spark.hash-partition-count-scaling-factor-on-out-of-memory if query fails due to low hash partition count",
                         prestoSparkConfig.isRetryOnOutOfMemoryWithHigherHashPartitionCountEnabled(),
@@ -199,6 +217,11 @@ public class PrestoSparkSessionProperties
                         SPARK_HASH_PARTITION_COUNT_SCALING_FACTOR_ON_OUT_OF_MEMORY,
                         "Scaling factor for hash partition count when a query fails with out of memory error due to low hash partition count",
                         prestoSparkConfig.getHashPartitionCountScalingFactorOnOutOfMemory(),
+                        false),
+                booleanProperty(
+                        ADAPTIVE_JOIN_SIDE_SWITCHING_ENABLED,
+                        "Enables the adaptive optimizer to switch the build and probe sides of a join",
+                        prestoSparkConfig.isAdaptiveJoinSideSwitchingEnabled(),
                         false));
     }
 
@@ -311,6 +334,7 @@ public class PrestoSparkSessionProperties
     {
         return session.getSystemProperty(SPARK_MAX_HASH_PARTITION_COUNT, Integer.class);
     }
+
     public static int getMinHashPartitionCount(Session session)
     {
         return session.getSystemProperty(SPARK_MIN_HASH_PARTITION_COUNT, Integer.class);
@@ -321,6 +345,16 @@ public class PrestoSparkSessionProperties
         return session.getSystemProperty(SPARK_RESOURCE_ALLOCATION_STRATEGY_ENABLED, Boolean.class);
     }
 
+    public static boolean isSparkExecutorAllocationStrategyEnabled(Session session)
+    {
+        return session.getSystemProperty(SPARK_EXECUTOR_ALLOCATION_STRATEGY_ENABLED, Boolean.class);
+    }
+
+    public static boolean isSparkHashPartitionCountAllocationStrategyEnabled(Session session)
+    {
+        return session.getSystemProperty(SPARK_HASH_PARTITION_COUNT_ALLOCATION_STRATEGY_ENABLED, Boolean.class);
+    }
+
     public static boolean isRetryOnOutOfMemoryWithHigherHashPartitionCountEnabled(Session session)
     {
         return session.getSystemProperty(SPARK_RETRY_ON_OUT_OF_MEMORY_HIGHER_PARTITION_COUNT_ENABLED, Boolean.class);
@@ -329,5 +363,10 @@ public class PrestoSparkSessionProperties
     public static double getHashPartitionCountScalingFactorOnOutOfMemory(Session session)
     {
         return session.getSystemProperty(SPARK_HASH_PARTITION_COUNT_SCALING_FACTOR_ON_OUT_OF_MEMORY, Double.class);
+    }
+
+    public static boolean isAdaptiveJoinSideSwitchingEnabled(Session session)
+    {
+        return session.getSystemProperty(ADAPTIVE_JOIN_SIDE_SWITCHING_ENABLED, Boolean.class);
     }
 }
