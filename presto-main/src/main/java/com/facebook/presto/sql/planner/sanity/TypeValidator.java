@@ -93,6 +93,12 @@ public final class TypeValidator
                     checkFunctionSignature(node.getAggregations());
                     checkAggregation(node.getAggregations());
                     break;
+                case PARTIAL:
+                    verifyPartialAggregationTypes(node.getAggregations());
+                    break;
+                case INTERMEDIATE:
+                    verifyIntermediateAggregationTypes(node.getAggregations());
+                    break;
                 case FINAL:
                     checkFunctionSignature(node.getAggregations());
                     break;
@@ -190,7 +196,7 @@ public final class TypeValidator
                         aggregation.getCall().getType().getTypeSignature());
                 int argumentSize = aggregation.getArguments().size();
                 int expectedArgumentSize = functionMetadata.getArgumentTypes().size();
-                checkArgument(argumentSize == functionMetadata.getArgumentTypes().size(),
+                checkArgument(argumentSize == expectedArgumentSize,
                         "Number of arguments is different from function signature: expected %s but got %s", expectedArgumentSize, argumentSize);
                 List<TypeSignature> argumentTypes = aggregation.getArguments()
                         .stream()
@@ -215,6 +221,35 @@ public final class TypeValidator
             FunctionAndTypeManager functionAndTypeManager = metadata.getFunctionAndTypeManager();
             if (!actual.equals(UNKNOWN.getTypeSignature()) && !functionAndTypeManager.isTypeOnlyCoercion(functionAndTypeManager.getType(actual), variable.getType())) {
                 checkArgument(variable.getType().getTypeSignature().equals(actual), "type of variable '%s' is expected to be %s, but the actual type is %s", variable.getName(), variable.getType(), actual);
+            }
+        }
+
+        private void verifyPartialAggregationTypes(Map<VariableReferenceExpression, Aggregation> aggregations)
+        {
+            for (Map.Entry<VariableReferenceExpression, Aggregation> entry : aggregations.entrySet()) {
+                Aggregation aggregation = entry.getValue();
+
+                TypeSignature actualTypeSig = aggregation.getCall().getType().getTypeSignature();
+                verifyTypeSignature(entry.getKey(), actualTypeSig);
+            }
+        }
+
+        private void verifyIntermediateAggregationTypes(Map<VariableReferenceExpression, Aggregation> aggregations)
+        {
+            for (Map.Entry<VariableReferenceExpression, Aggregation> entry : aggregations.entrySet()) {
+                Aggregation aggregation = entry.getValue();
+
+                int argumentSize = aggregation.getArguments().size();
+                checkArgument(argumentSize == 1,
+                        "Number of arguments for intermediate aggregation is expected to be 1, got %s", argumentSize);
+
+                TypeSignature expectedTypeSig = aggregation.getArguments().get(0).getType().getTypeSignature();
+                TypeSignature actualTypeSig = aggregation.getCall().getType().getTypeSignature();
+                checkArgument(
+                        expectedTypeSig.equals(actualTypeSig),
+                        "Return type for intermediate aggregation must be the same as the type of its single argument: expected '%s', got '%s'", expectedTypeSig, actualTypeSig);
+
+                verifyTypeSignature(entry.getKey(), actualTypeSig);
             }
         }
     }

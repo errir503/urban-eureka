@@ -221,6 +221,7 @@ public final class SystemSessionProperties
     public static final String STREAMING_FOR_PARTIAL_AGGREGATION_ENABLED = "streaming_for_partial_aggregation_enabled";
     public static final String MAX_STAGE_COUNT_FOR_EAGER_SCHEDULING = "max_stage_count_for_eager_scheduling";
     public static final String HYPERLOGLOG_STANDARD_ERROR_WARNING_THRESHOLD = "hyperloglog_standard_error_warning_threshold";
+    public static final String PREFER_MERGE_JOIN = "prefer_merge_join";
 
     //TODO: Prestissimo related session properties that are temporarily put here. They will be relocated in the future
     public static final String PRESTISSIMO_SIMPLIFIED_EXPRESSION_EVALUATION_ENABLED = "simplified_expression_evaluation_enabled";
@@ -229,6 +230,7 @@ public final class SystemSessionProperties
     public static final String KEY_BASED_SAMPLING_FUNCTION = "key_based_sampling_function";
     public static final String HASH_BASED_DISTINCT_LIMIT_ENABLED = "hash_based_distinct_limit_enabled";
     public static final String HASH_BASED_DISTINCT_LIMIT_THRESHOLD = "hash_based_distinct_limit_threshold";
+    public static final String ROUND_ROBIN_SHUFFLE_BEFORE_PARTIAL_DISTINCT_LIMIT = "round_robin_shuffle_before_partial_distinct_limit";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -1172,6 +1174,12 @@ public final class SystemSessionProperties
                         "Enable streaming for partial aggregation",
                         featuresConfig.isStreamingForPartialAggregationEnabled(),
                         false),
+                booleanProperty(
+                        PREFER_MERGE_JOIN,
+                        "Prefer merge join for sorted join inputs, e.g., tables pre-sorted, pre-partitioned by join columns." +
+                                "To make it work, the connector needs to guarantee and expose the data properties of the underlying table.",
+                        featuresConfig.isPreferMergeJoin(),
+                        true),
                 new PropertyMetadata<>(
                         AGGREGATION_IF_TO_FILTER_REWRITE_STRATEGY,
                         format("Set the strategy used to rewrite AGG IF to AGG FILTER. Options are %s",
@@ -1247,6 +1255,11 @@ public final class SystemSessionProperties
                         HYPERLOGLOG_STANDARD_ERROR_WARNING_THRESHOLD,
                         "Threshold for obtaining precise results from aggregation functions",
                         featuresConfig.getHyperloglogStandardErrorWarningThreshold(),
+                        false),
+                booleanProperty(
+                        ROUND_ROBIN_SHUFFLE_BEFORE_PARTIAL_DISTINCT_LIMIT,
+                        "Add a local roundrobin shuffle before partial distinct limit",
+                        featuresConfig.isRoundRobinShuffleBeforePartialDistinctLimit(),
                         false));
     }
 
@@ -2068,6 +2081,11 @@ public final class SystemSessionProperties
         return session.getSystemProperty(STREAMING_FOR_PARTIAL_AGGREGATION_ENABLED, Boolean.class);
     }
 
+    public static boolean preferMergeJoin(Session session)
+    {
+        return session.getSystemProperty(PREFER_MERGE_JOIN, Boolean.class);
+    }
+
     public static AggregationIfToFilterRewriteStrategy getAggregationIfToFilterRewriteStrategy(Session session)
     {
         return session.getSystemProperty(AGGREGATION_IF_TO_FILTER_REWRITE_STRATEGY, AggregationIfToFilterRewriteStrategy.class);
@@ -2096,5 +2114,10 @@ public final class SystemSessionProperties
     public static double getHyperloglogStandardErrorWarningThreshold(Session session)
     {
         return session.getSystemProperty(HYPERLOGLOG_STANDARD_ERROR_WARNING_THRESHOLD, Double.class);
+    }
+
+    public static boolean isRoundRobinShuffleBeforePartialDistinctLimit(Session session)
+    {
+        return session.getSystemProperty(ROUND_ROBIN_SHUFFLE_BEFORE_PARTIAL_DISTINCT_LIMIT, Boolean.class);
     }
 }

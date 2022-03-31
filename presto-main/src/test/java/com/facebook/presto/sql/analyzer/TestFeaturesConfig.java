@@ -85,6 +85,7 @@ public class TestFeaturesConfig
                 .setDictionaryAggregation(false)
                 .setAggregationPartitioningMergingStrategy(LEGACY)
                 .setLegacyArrayAgg(false)
+                .setUseAlternativeFunctionSignatures(false)
                 .setGroupByUsesEqualTo(false)
                 .setLegacyMapSubscript(false)
                 .setReduceAggForComplexTypesEnabled(true)
@@ -191,7 +192,9 @@ public class TestFeaturesConfig
                 .setHashBasedDistinctLimitThreshold(10000)
                 .setStreamingForPartialAggregationEnabled(false)
                 .setMaxStageCountForEagerScheduling(25)
-                .setHyperloglogStandardErrorWarningThreshold(0.004));
+                .setHyperloglogStandardErrorWarningThreshold(0.004)
+                .setPreferMergeJoin(false)
+                .setRoundRobinShuffleBeforePartialDistinctLimit(false));
     }
 
     @Test
@@ -216,6 +219,7 @@ public class TestFeaturesConfig
                 .put("optimizer.default-filter-factor-enabled", "true")
                 .put("deprecated.legacy-array-agg", "true")
                 .put("deprecated.legacy-log-function", "true")
+                .put("use-alternative-function-signatures", "true")
                 .put("deprecated.group-by-uses-equal", "true")
                 .put("deprecated.legacy-map-subscript", "true")
                 .put("reduce-agg-for-complex-types-enabled", "false")
@@ -334,6 +338,8 @@ public class TestFeaturesConfig
                 .put("streaming-for-partial-aggregation-enabled", "true")
                 .put("execution-policy.max-stage-count-for-eager-scheduling", "123")
                 .put("hyperloglog-standard-error-warning-threshold", "0.02")
+                .put("optimizer.prefer-merge-join", "true")
+                .put("optimizer.round-robin-shuffle-before-partial-distinct-limit", "true")
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -380,6 +386,7 @@ public class TestFeaturesConfig
                 .setAggregationPartitioningMergingStrategy(TOP_DOWN)
                 .setPushAggregationThroughJoin(false)
                 .setLegacyArrayAgg(true)
+                .setUseAlternativeFunctionSignatures(true)
                 .setGroupByUsesEqualTo(true)
                 .setLegacyMapSubscript(true)
                 .setReduceAggForComplexTypesEnabled(false)
@@ -473,7 +480,9 @@ public class TestFeaturesConfig
                 .setHashBasedDistinctLimitThreshold(500)
                 .setStreamingForPartialAggregationEnabled(true)
                 .setMaxStageCountForEagerScheduling(123)
-                .setHyperloglogStandardErrorWarningThreshold(0.02);
+                .setHyperloglogStandardErrorWarningThreshold(0.02)
+                .setPreferMergeJoin(true)
+                .setRoundRobinShuffleBeforePartialDistinctLimit(true);
         assertFullMapping(properties, expected);
     }
 

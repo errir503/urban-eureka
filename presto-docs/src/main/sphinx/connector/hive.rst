@@ -138,6 +138,10 @@ Property Name                                      Description                  
                                                    installations where Presto is collocated with every
                                                    DataNode.
 
+``hive.order-based-execution-enabled``             Enable order-based execution. When it's enabled, hive files  ``false``
+                                                   become non-splittable and the table ordering properties
+                                                   would be exposed to plan optimizer
+
 ``hive.respect-table-format``                      Should new partitions be written using the existing table    ``true``
                                                    format or the default Presto format?
 
@@ -714,6 +718,14 @@ The following operations are not supported when ``avro_schema_url`` is set:
 
 Procedures
 ----------
+
+Use the :doc:`/sql/call` statement to perform data manipulation or
+administrative tasks. Procedures must include a qualified catalog name, if your
+Hive catalog is called ``web``::
+
+    CALL web.system.example_procedure()
+
+The following procedures are available:
 
 * ``system.create_empty_partition(schema_name, table_name, partition_columns, partition_values)``
 

@@ -36,6 +36,8 @@ import static com.facebook.presto.SystemSessionProperties.PARTIAL_MERGE_PUSHDOWN
 import static com.facebook.presto.SystemSessionProperties.QUERY_MAX_TOTAL_MEMORY_PER_NODE;
 import static com.facebook.presto.spark.PrestoSparkQueryRunner.METASTORE_CONTEXT;
 import static com.facebook.presto.spark.PrestoSparkQueryRunner.createHivePrestoSparkQueryRunner;
+import static com.facebook.presto.spark.PrestoSparkSessionProperties.SPARK_BROADCAST_JOIN_MAX_MEMORY_OVERRIDE;
+import static com.facebook.presto.spark.PrestoSparkSessionProperties.SPARK_RETRY_ON_OUT_OF_MEMORY_BROADCAST_JOIN_ENABLED;
 import static com.facebook.presto.spark.PrestoSparkSessionProperties.SPARK_SPLIT_ASSIGNMENT_BATCH_SIZE;
 import static com.facebook.presto.spark.PrestoSparkSessionProperties.STORAGE_BASED_BROADCAST_JOIN_ENABLED;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.PartialMergePushdownStrategy.PUSH_THROUGH_LOW_MEMORY_OPERATORS;
@@ -905,7 +907,52 @@ public class TestPrestoSparkQueryRunner
         assertQueryFails(
                 session,
                 "select * from lineitem l join orders o on l.orderkey = o.orderkey",
-                "Query exceeded per-node total memory limit of 1MB \\[Compressed broadcast size: .*kB; Uncompressed broadcast size: .*MB\\]");
+                "Query exceeded per-node total memory limit of 1MB \\[Broadcast size: .*MB\\]");
+    }
+
+    @Test
+    public void testStorageBasedBroadcastJoinDeserializedMaxThreshold()
+    {
+        Session session = Session.builder(getSession())
+                .setSystemProperty(JOIN_DISTRIBUTION_TYPE, "BROADCAST")
+                .setSystemProperty(STORAGE_BASED_BROADCAST_JOIN_ENABLED, "true")
+                .setSystemProperty(SPARK_BROADCAST_JOIN_MAX_MEMORY_OVERRIDE, "2MB")
+                .setSystemProperty(QUERY_MAX_TOTAL_MEMORY_PER_NODE, "100MB")
+                .build();
+
+        assertQueryFails(
+                session,
+                "select * from lineitem l join orders o on l.orderkey = o.orderkey",
+                "Query exceeded per-node broadcast memory limit of 2MB \\[Broadcast size: 2.*MB\\]");
+    }
+
+    @Test
+    public void testRetryOnOutOfMemoryBroadcastJoin()
+    {
+        Session session = Session.builder(getSession())
+                .setSystemProperty(JOIN_DISTRIBUTION_TYPE, "BROADCAST")
+                .setSystemProperty(STORAGE_BASED_BROADCAST_JOIN_ENABLED, "true")
+                .setSystemProperty(SPARK_BROADCAST_JOIN_MAX_MEMORY_OVERRIDE, "10B")
+                .setSystemProperty(SPARK_RETRY_ON_OUT_OF_MEMORY_BROADCAST_JOIN_ENABLED, "false")
+                .build();
+
+        // Query should fail with broadcast join OOM
+        assertQueryFails(
+                session,
+                "select * from lineitem l join orders o on l.orderkey = o.orderkey",
+                "Query exceeded per-node broadcast memory limit of 10B \\[Broadcast size: .*MB\\]");
+
+        session = Session.builder(getSession())
+                .setSystemProperty(JOIN_DISTRIBUTION_TYPE, "BROADCAST")
+                .setSystemProperty(STORAGE_BASED_BROADCAST_JOIN_ENABLED, "true")
+                .setSystemProperty(SPARK_BROADCAST_JOIN_MAX_MEMORY_OVERRIDE, "10B")
+                .setSystemProperty(SPARK_RETRY_ON_OUT_OF_MEMORY_BROADCAST_JOIN_ENABLED, "true")
+                .build();
+
+        // Query should succeed since broadcast join will be disabled on retry
+        assertQuery(
+                session,
+                "select * from lineitem l join orders o on l.orderkey = o.orderkey");
     }
 
     @Test

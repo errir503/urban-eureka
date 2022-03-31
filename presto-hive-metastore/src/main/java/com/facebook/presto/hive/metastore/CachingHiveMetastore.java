@@ -54,6 +54,7 @@ import static com.facebook.presto.hive.HiveErrorCode.HIVE_PARTITION_DROPPED_DURI
 import static com.facebook.presto.hive.metastore.CachingHiveMetastore.MetastoreCacheScope.ALL;
 import static com.facebook.presto.hive.metastore.HivePartitionName.hivePartitionName;
 import static com.facebook.presto.hive.metastore.HiveTableName.hiveTableName;
+import static com.facebook.presto.hive.metastore.NoopMetastoreCacheStats.NOOP_METASTORE_CACHE_STATS;
 import static com.facebook.presto.hive.metastore.PartitionFilter.partitionFilter;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -78,8 +79,6 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 public class CachingHiveMetastore
         implements ExtendedHiveMetastore
 {
-    private static final String NO_IMPERSONATION_USER = "no-impersonation-caching-user";
-
     public enum MetastoreCacheScope
     {
         ALL, PARTITION
@@ -99,15 +98,18 @@ public class CachingHiveMetastore
     private final LoadingCache<KeyAndContext<UserTableKey>, Set<HivePrivilegeInfo>> tablePrivilegesCache;
     private final LoadingCache<KeyAndContext<String>, Set<String>> rolesCache;
     private final LoadingCache<KeyAndContext<PrestoPrincipal>, Set<RoleGrant>> roleGrantsCache;
+    private final MetastoreCacheStats metastoreCacheStats;
 
     private final boolean metastoreImpersonationEnabled;
     private final boolean partitionVersioningEnabled;
     private final double partitionCacheValidationPercentage;
+    private final int partitionCacheColumnCountLimit;
 
     @Inject
     public CachingHiveMetastore(
             @ForCachingHiveMetastore ExtendedHiveMetastore delegate,
             @ForCachingHiveMetastore ExecutorService executor,
+            MetastoreCacheStats metastoreCacheStats,
             MetastoreClientConfig metastoreClientConfig)
     {
         this(
@@ -119,7 +121,9 @@ public class CachingHiveMetastore
                 metastoreClientConfig.getMetastoreCacheMaximumSize(),
                 metastoreClientConfig.isPartitionVersioningEnabled(),
                 metastoreClientConfig.getMetastoreCacheScope(),
-                metastoreClientConfig.getPartitionCacheValidationPercentage());
+                metastoreClientConfig.getPartitionCacheValidationPercentage(),
+                metastoreClientConfig.getPartitionCacheColumnCountLimit(),
+                metastoreCacheStats);
     }
 
     public CachingHiveMetastore(
@@ -131,7 +135,9 @@ public class CachingHiveMetastore
             long maximumSize,
             boolean partitionVersioningEnabled,
             MetastoreCacheScope metastoreCacheScope,
-            double partitionCacheValidationPercentage)
+            double partitionCacheValidationPercentage,
+            int partitionCacheColumnCountLimit,
+            MetastoreCacheStats metastoreCacheStats)
     {
         this(
                 delegate,
@@ -142,10 +148,12 @@ public class CachingHiveMetastore
                 maximumSize,
                 partitionVersioningEnabled,
                 metastoreCacheScope,
-                partitionCacheValidationPercentage);
+                partitionCacheValidationPercentage,
+                partitionCacheColumnCountLimit,
+                metastoreCacheStats);
     }
 
-    public static CachingHiveMetastore memoizeMetastore(ExtendedHiveMetastore delegate, boolean isMetastoreImpersonationEnabled, long maximumSize)
+    public static CachingHiveMetastore memoizeMetastore(ExtendedHiveMetastore delegate, boolean isMetastoreImpersonationEnabled, long maximumSize, int partitionCacheMaxColumnCount)
     {
         return new CachingHiveMetastore(
                 delegate,
@@ -156,7 +164,9 @@ public class CachingHiveMetastore
                 maximumSize,
                 false,
                 ALL,
-                0.0);
+                0.0,
+                partitionCacheMaxColumnCount,
+                NOOP_METASTORE_CACHE_STATS);
     }
 
     private CachingHiveMetastore(
@@ -168,13 +178,17 @@ public class CachingHiveMetastore
             long maximumSize,
             boolean partitionVersioningEnabled,
             MetastoreCacheScope metastoreCacheScope,
-            double partitionCacheValidationPercentage)
+            double partitionCacheValidationPercentage,
+            int partitionCacheColumnCountLimit,
+            MetastoreCacheStats metastoreCacheStats)
     {
         this.delegate = requireNonNull(delegate, "delegate is null");
         requireNonNull(executor, "executor is null");
         this.metastoreImpersonationEnabled = metastoreImpersonationEnabled;
         this.partitionVersioningEnabled = partitionVersioningEnabled;
         this.partitionCacheValidationPercentage = partitionCacheValidationPercentage;
+        this.partitionCacheColumnCountLimit = partitionCacheColumnCountLimit;
+        this.metastoreCacheStats = metastoreCacheStats;
 
         OptionalLong cacheExpiresAfterWriteMillis;
         OptionalLong cacheRefreshMills;
@@ -269,6 +283,7 @@ public class CachingHiveMetastore
                         return loadPartitionsByNames(partitionNames);
                     }
                 }, executor));
+        metastoreCacheStats.setPartitionCache(partitionCache);
 
         tablePrivilegesCache = newCacheBuilder(cacheExpiresAfterWriteMillis, cacheRefreshMills, cacheMaxSize)
                 .build(asyncReloading(CacheLoader.from(this::loadTablePrivileges), executor));
@@ -507,10 +522,10 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public void createTable(MetastoreContext metastoreContext, Table table, PrincipalPrivileges principalPrivileges)
+    public MetastoreOperationResult createTable(MetastoreContext metastoreContext, Table table, PrincipalPrivileges principalPrivileges)
     {
         try {
-            delegate.createTable(metastoreContext, table, principalPrivileges);
+            return delegate.createTable(metastoreContext, table, principalPrivileges);
         }
         finally {
             invalidateTable(table.getDatabaseName(), table.getTableName());
@@ -529,10 +544,10 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public void replaceTable(MetastoreContext metastoreContext, String databaseName, String tableName, Table newTable, PrincipalPrivileges principalPrivileges)
+    public MetastoreOperationResult replaceTable(MetastoreContext metastoreContext, String databaseName, String tableName, Table newTable, PrincipalPrivileges principalPrivileges)
     {
         try {
-            delegate.replaceTable(metastoreContext, databaseName, tableName, newTable, principalPrivileges);
+            return delegate.replaceTable(metastoreContext, databaseName, tableName, newTable, principalPrivileges);
         }
         finally {
             invalidateTable(databaseName, tableName);
@@ -541,10 +556,10 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public void renameTable(MetastoreContext metastoreContext, String databaseName, String tableName, String newDatabaseName, String newTableName)
+    public MetastoreOperationResult renameTable(MetastoreContext metastoreContext, String databaseName, String tableName, String newDatabaseName, String newTableName)
     {
         try {
-            delegate.renameTable(metastoreContext, databaseName, tableName, newDatabaseName, newTableName);
+            return delegate.renameTable(metastoreContext, databaseName, tableName, newDatabaseName, newTableName);
         }
         finally {
             invalidateTable(databaseName, tableName);
@@ -553,10 +568,10 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public void addColumn(MetastoreContext metastoreContext, String databaseName, String tableName, String columnName, HiveType columnType, String columnComment)
+    public MetastoreOperationResult addColumn(MetastoreContext metastoreContext, String databaseName, String tableName, String columnName, HiveType columnType, String columnComment)
     {
         try {
-            delegate.addColumn(metastoreContext, databaseName, tableName, columnName, columnType, columnComment);
+            return delegate.addColumn(metastoreContext, databaseName, tableName, columnName, columnType, columnComment);
         }
         finally {
             invalidateTable(databaseName, tableName);
@@ -564,10 +579,10 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public void renameColumn(MetastoreContext metastoreContext, String databaseName, String tableName, String oldColumnName, String newColumnName)
+    public MetastoreOperationResult renameColumn(MetastoreContext metastoreContext, String databaseName, String tableName, String oldColumnName, String newColumnName)
     {
         try {
-            delegate.renameColumn(metastoreContext, databaseName, tableName, oldColumnName, newColumnName);
+            return delegate.renameColumn(metastoreContext, databaseName, tableName, oldColumnName, newColumnName);
         }
         finally {
             invalidateTable(databaseName, tableName);
@@ -575,10 +590,10 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public void dropColumn(MetastoreContext metastoreContext, String databaseName, String tableName, String columnName)
+    public MetastoreOperationResult dropColumn(MetastoreContext metastoreContext, String databaseName, String tableName, String columnName)
     {
         try {
-            delegate.dropColumn(metastoreContext, databaseName, tableName, columnName);
+            return delegate.dropColumn(metastoreContext, databaseName, tableName, columnName);
         }
         finally {
             invalidateTable(databaseName, tableName);
@@ -620,6 +635,7 @@ public class CachingHiveMetastore
         if (isPartitionCacheValidationEnabled()) {
             validatePartitionCache(key, result);
         }
+        invalidatePartitionsWithHighColumnCount(result, key);
         return result;
     }
 
@@ -684,6 +700,15 @@ public class CachingHiveMetastore
         }
     }
 
+    private void invalidatePartitionsWithHighColumnCount(Optional<Partition> partition, KeyAndContext<HivePartitionName> partitionCacheKey)
+    {
+        // Do NOT cache partitions with # of columns > partitionCacheColumnLimit
+        if (partition.isPresent() && partition.get().getColumns().size() > partitionCacheColumnCountLimit) {
+            partitionCache.invalidate(partitionCacheKey);
+            metastoreCacheStats.incrementPartitionsWithColumnCountGreaterThanThreshold();
+        }
+    }
+
     private boolean isPartitionCacheValidationEnabled()
     {
         return partitionCacheValidationPercentage > 0 &&
@@ -741,7 +766,9 @@ public class CachingHiveMetastore
         }
         ImmutableMap.Builder<String, Optional<Partition>> partitionsByName = ImmutableMap.builder();
         for (Entry<KeyAndContext<HivePartitionName>, Optional<Partition>> entry : all.entrySet()) {
-            partitionsByName.put(entry.getKey().getKey().getPartitionName().get(), entry.getValue());
+            Optional<Partition> value = entry.getValue();
+            invalidatePartitionsWithHighColumnCount(value, entry.getKey());
+            partitionsByName.put(entry.getKey().getKey().getPartitionName().get(), value);
         }
         return partitionsByName.build();
     }
@@ -782,10 +809,10 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public void addPartitions(MetastoreContext metastoreContext, String databaseName, String tableName, List<PartitionWithStatistics> partitions)
+    public MetastoreOperationResult addPartitions(MetastoreContext metastoreContext, String databaseName, String tableName, List<PartitionWithStatistics> partitions)
     {
         try {
-            delegate.addPartitions(metastoreContext, databaseName, tableName, partitions);
+            return delegate.addPartitions(metastoreContext, databaseName, tableName, partitions);
         }
         finally {
             // todo do we need to invalidate all partitions?
@@ -805,10 +832,10 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public void alterPartition(MetastoreContext metastoreContext, String databaseName, String tableName, PartitionWithStatistics partition)
+    public MetastoreOperationResult alterPartition(MetastoreContext metastoreContext, String databaseName, String tableName, PartitionWithStatistics partition)
     {
         try {
-            delegate.alterPartition(metastoreContext, databaseName, tableName, partition);
+            return delegate.alterPartition(metastoreContext, databaseName, tableName, partition);
         }
         finally {
             invalidatePartitionCache(databaseName, tableName);
@@ -1034,7 +1061,6 @@ public class CachingHiveMetastore
         if (refreshMillis.isPresent() && (!expiresAfterWriteMillis.isPresent() || expiresAfterWriteMillis.getAsLong() > refreshMillis.getAsLong())) {
             cacheBuilder = cacheBuilder.refreshAfterWrite(refreshMillis.getAsLong(), MILLISECONDS);
         }
-        cacheBuilder = cacheBuilder.maximumSize(maximumSize);
-        return cacheBuilder;
+        return cacheBuilder.maximumSize(maximumSize).recordStats();
     }
 }

@@ -22,6 +22,7 @@ import com.facebook.presto.metadata.CatalogMetadata;
 import com.facebook.presto.spi.ConnectorId;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.connector.Connector;
+import com.facebook.presto.spi.connector.ConnectorCommitHandle;
 import com.facebook.presto.spi.connector.ConnectorMetadata;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.function.FunctionNamespaceManager;
@@ -62,6 +63,7 @@ import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
 import static com.facebook.presto.spi.StandardErrorCode.READ_ONLY_VIOLATION;
 import static com.facebook.presto.spi.StandardErrorCode.TRANSACTION_ALREADY_ABORTED;
 import static com.facebook.presto.spi.StandardErrorCode.UNKNOWN_TRANSACTION;
+import static com.facebook.presto.spi.connector.EmptyConnectorCommitHandle.INSTANCE;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
@@ -541,6 +543,7 @@ public class InMemoryTransactionManager
 
             ConnectorId writeConnectorId = this.writtenConnectorId.get();
             if (writeConnectorId == null) {
+                // for read-only transaction, we return the commit handle for the read query.
                 Supplier<ListenableFuture<?>> commitReadOnlyConnectors = () -> {
                     ListenableFuture<? extends List<?>> future = Futures.allAsList(connectorIdToMetadata.values().stream()
                             .map(transactionMetadata -> finishingExecutor.submit(transactionMetadata::commit))
@@ -564,13 +567,14 @@ public class InMemoryTransactionManager
                 return future;
             };
 
+            // for transactions with read and write, we only return the commit handle for write query.
             ConnectorTransactionMetadata writeConnector = connectorIdToMetadata.get(writeConnectorId);
-            Supplier<ListenableFuture> commitFunctionNamespaceTransactions = () -> functionNamespaceFuture;
-            ListenableFuture<?> commitFuture = Futures.transformAsync(finishingExecutor.submit(writeConnector::commit), ignored -> commitFunctionNamespaceTransactions.get(), directExecutor());
-            ListenableFuture<?> readOnlyCommitFuture = Futures.transformAsync(commitFuture, ignored -> commitReadOnlyConnectors.get(), directExecutor());
-            addExceptionCallback(readOnlyCommitFuture, this::abortInternal);
+            Supplier<ListenableFuture<?>> commitFunctionNamespaceTransactions = () -> functionNamespaceFuture;
+            ListenableFuture<?> readOnlyCommitFuture = Futures.transformAsync(commitFunctionNamespaceTransactions.get(), ignored -> commitReadOnlyConnectors.get(), directExecutor());
+            ListenableFuture<?> writeCommitFuture = Futures.transformAsync(readOnlyCommitFuture, ignored -> finishingExecutor.submit(writeConnector::commit), directExecutor());
+            addExceptionCallback(writeCommitFuture, this::abortInternal);
 
-            return nonCancellationPropagating(readOnlyCommitFuture);
+            return nonCancellationPropagating(writeCommitFuture);
         }
 
         public synchronized ListenableFuture<?> asyncAbort()
@@ -671,11 +675,12 @@ public class InMemoryTransactionManager
                 return transactionHandle;
             }
 
-            public void commit()
+            public ConnectorCommitHandle commit()
             {
                 if (finished.compareAndSet(false, true)) {
-                    connector.commit(transactionHandle);
+                    return connector.commit(transactionHandle);
                 }
+                return INSTANCE;
             }
 
             public void abort()
