@@ -60,13 +60,13 @@ import javax.annotation.Nullable;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.OptionalLong;
-import java.util.TreeSet;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -78,8 +78,10 @@ import static com.facebook.presto.orc.FlushReason.CLOSED;
 import static com.facebook.presto.orc.OrcEncoding.DWRF;
 import static com.facebook.presto.orc.OrcReader.validateFile;
 import static com.facebook.presto.orc.metadata.ColumnEncoding.ColumnEncodingKind.DIRECT;
+import static com.facebook.presto.orc.metadata.ColumnEncoding.DEFAULT_SEQUENCE_ID;
 import static com.facebook.presto.orc.metadata.DwrfMetadataWriter.toFileStatistics;
 import static com.facebook.presto.orc.metadata.DwrfMetadataWriter.toStripeEncryptionGroup;
+import static com.facebook.presto.orc.metadata.OrcType.mapColumnToNode;
 import static com.facebook.presto.orc.metadata.PostScript.MAGIC;
 import static com.facebook.presto.orc.writer.ColumnWriters.createColumnWriter;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -101,6 +103,7 @@ public class OrcWriter
 
     static final String PRESTO_ORC_WRITER_VERSION_METADATA_KEY = "presto.writer.version";
     static final String PRESTO_ORC_WRITER_VERSION;
+
     static {
         String version = OrcWriter.class.getPackage().getImplementationVersion();
         PRESTO_ORC_WRITER_VERSION = version == null ? "UNKNOWN" : version;
@@ -201,6 +204,10 @@ public class OrcWriter
         this.orcEncoding = requireNonNull(orcEncoding, "orcEncoding is null");
         this.compressionBufferPool = new LastUsedCompressionBufferPool();
 
+        requireNonNull(columnNames, "columnNames is null");
+        requireNonNull(inputOrcTypes, "inputOrcTypes is null");
+        this.orcTypes = inputOrcTypes.orElseGet(() -> OrcType.createOrcRowType(0, columnNames, types));
+
         requireNonNull(compressionKind, "compressionKind is null");
         this.columnWriterOptions = ColumnWriterOptions.builder()
                 .setCompressionKind(compressionKind)
@@ -213,6 +220,7 @@ public class OrcWriter
                 .setIgnoreDictionaryRowGroupSizes(options.isIgnoreDictionaryRowGroupSizes())
                 .setPreserveDirectEncodingStripeCount(options.getPreserveDirectEncodingStripeCount())
                 .setCompressionBufferPool(compressionBufferPool)
+                .setFlattenedNodes(mapColumnToNode(options.getFlattenedColumns(), orcTypes))
                 .build();
         recordValidation(validation -> validation.setCompression(compressionKind));
 
@@ -230,9 +238,6 @@ public class OrcWriter
         this.hiveStorageTimeZone = requireNonNull(hiveStorageTimeZone, "hiveStorageTimeZone is null");
         this.stats = requireNonNull(stats, "stats is null");
 
-        requireNonNull(columnNames, "columnNames is null");
-        requireNonNull(inputOrcTypes, "inputOrcTypes is null");
-        this.orcTypes = inputOrcTypes.orElseGet(() -> OrcType.createOrcRowType(0, columnNames, types));
         recordValidation(validation -> validation.setColumnNames(columnNames));
 
         dwrfWriterEncryption = requireNonNull(encryption, "encryption is null");
@@ -285,11 +290,12 @@ public class OrcWriter
         checkArgument(rootType.getFieldCount() == types.size());
         ImmutableList.Builder<ColumnWriter> columnWriters = ImmutableList.builder();
         ImmutableSet.Builder<DictionaryColumnWriter> dictionaryColumnWriters = ImmutableSet.builder();
-        for (int fieldId = 0; fieldId < types.size(); fieldId++) {
-            int fieldColumnIndex = rootType.getFieldTypeIndex(fieldId);
-            Type fieldType = types.get(fieldId);
+        for (int columnIndex = 0; columnIndex < types.size(); columnIndex++) {
+            int nodeIndex = rootType.getFieldTypeIndex(columnIndex);
+            Type fieldType = types.get(columnIndex);
             ColumnWriter columnWriter = createColumnWriter(
-                    fieldColumnIndex,
+                    nodeIndex,
+                    DEFAULT_SEQUENCE_ID,
                     orcTypes,
                     fieldType,
                     columnWriterOptions,
@@ -855,13 +861,15 @@ public class OrcWriter
         if (expectedSize == 0) {
             return ImmutableList.of();
         }
-        ArrayList<T> list = new ArrayList<>(expectedSize);
-        TreeSet<Integer> sortedKeys = new TreeSet<>();
-        sortedKeys.addAll(data.keySet());
+
+        List<Integer> sortedKeys = new ArrayList<>(data.keySet());
+        Collections.sort(sortedKeys);
+
+        ImmutableList.Builder<T> denseList = ImmutableList.builderWithExpectedSize(expectedSize);
         for (Integer key : sortedKeys) {
-            list.add(data.get(key));
+            denseList.add(data.get(key));
         }
-        return ImmutableList.copyOf(list);
+        return denseList.build();
     }
 
     private static List<ColumnStatistics> toFileStats(List<List<ColumnStatistics>> stripes)

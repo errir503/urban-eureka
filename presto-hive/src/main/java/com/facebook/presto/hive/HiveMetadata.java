@@ -223,6 +223,7 @@ import static com.facebook.presto.hive.HiveSessionProperties.isFileRenamingEnabl
 import static com.facebook.presto.hive.HiveSessionProperties.isOfflineDataDebugModeEnabled;
 import static com.facebook.presto.hive.HiveSessionProperties.isOptimizedMismatchedBucketCount;
 import static com.facebook.presto.hive.HiveSessionProperties.isOptimizedPartitionUpdateSerializationEnabled;
+import static com.facebook.presto.hive.HiveSessionProperties.isOrderBasedExecutionEnabled;
 import static com.facebook.presto.hive.HiveSessionProperties.isParquetPushdownFilterEnabled;
 import static com.facebook.presto.hive.HiveSessionProperties.isPreferManifestsToListFiles;
 import static com.facebook.presto.hive.HiveSessionProperties.isRespectTableFormat;
@@ -230,7 +231,6 @@ import static com.facebook.presto.hive.HiveSessionProperties.isShufflePartitione
 import static com.facebook.presto.hive.HiveSessionProperties.isSortedWriteToTempPathEnabled;
 import static com.facebook.presto.hive.HiveSessionProperties.isSortedWritingEnabled;
 import static com.facebook.presto.hive.HiveSessionProperties.isStatisticsEnabled;
-import static com.facebook.presto.hive.HiveSessionProperties.isStreamingAggregationEnabled;
 import static com.facebook.presto.hive.HiveSessionProperties.isUsePageFileForHiveUnsupportedType;
 import static com.facebook.presto.hive.HiveSessionProperties.shouldCreateEmptyBucketFilesForTemporaryTable;
 import static com.facebook.presto.hive.HiveStorageFormat.AVRO;
@@ -2706,6 +2706,7 @@ public class HiveMetadata
                                 false,
                                 createTableLayoutString(session, handle.getSchemaTableName(), hivePartitionResult.getBucketHandle(), hivePartitionResult.getBucketFilter(), TRUE_CONSTANT, domainPredicate),
                                 desiredColumns.map(columns -> columns.stream().map(column -> (HiveColumnHandle) column).collect(toImmutableSet())),
+                                false,
                                 false)),
                 hivePartitionResult.getUnenforcedConstraint()));
     }
@@ -2819,36 +2820,33 @@ public class HiveMetadata
             predicate = createPredicate(partitionColumns, partitions);
         }
 
-        // Expose ordering property of the table.
-        ImmutableList.Builder<LocalProperty<ColumnHandle>> localProperties = ImmutableList.builder();
+        // Expose ordering property of the table when order based execution is enabled.
+        ImmutableList.Builder<LocalProperty<ColumnHandle>> localPropertyBuilder = ImmutableList.builder();
         Optional<Set<ColumnHandle>> streamPartitionColumns = Optional.empty();
-        if (table.getStorage().getBucketProperty().isPresent() && !table.getStorage().getBucketProperty().get().getSortedBy().isEmpty()) {
+        if (table.getStorage().getBucketProperty().isPresent()
+                && !table.getStorage().getBucketProperty().get().getSortedBy().isEmpty()
+                && isOrderBasedExecutionEnabled(session)) {
             ImmutableSet.Builder<ColumnHandle> streamPartitionColumnsBuilder = ImmutableSet.builder();
+            Map<String, ColumnHandle> columnHandles = hiveColumnHandles(table).stream()
+                    .collect(toImmutableMap(HiveColumnHandle::getName, identity()));
 
             // streamPartitioningColumns is how we partition the data across splits.
             // localProperty is how we partition the data within a split.
-            // 1. add partition columns to streamPartitionColumns
-            partitionColumns.forEach(streamPartitionColumnsBuilder::add);
 
-            // 2. add sorted columns to streamPartitionColumns and localProperties
-            HiveBucketProperty bucketProperty = table.getStorage().getBucketProperty().get();
-            Map<String, ColumnHandle> columnHandles = hiveColumnHandles(table).stream()
-                    .collect(toImmutableMap(HiveColumnHandle::getName, identity()));
-            bucketProperty.getSortedBy().forEach(sortingColumn -> {
-                ColumnHandle columnHandle = columnHandles.get(sortingColumn.getColumnName());
-                localProperties.add(new SortingProperty<>(columnHandle, sortingColumn.getOrder().getSortOrder()));
+            // 1. add partition columns and bucketed-by columns to streamPartitionColumns
+            // when order based execution is enabled, splitting is disabled and data is sharded across splits when table is bucketed.
+            partitionColumns.forEach(streamPartitionColumnsBuilder::add);
+            table.getStorage().getBucketProperty().get().getBucketedBy().forEach(bucketedByColumn -> {
+                ColumnHandle columnHandle = columnHandles.get(bucketedByColumn);
                 streamPartitionColumnsBuilder.add(columnHandle);
             });
 
-            // We currently only set streamPartitionColumns when it enables streaming aggregation and also it's eligible to enable streaming aggregation
-            // 1. When the bucket columns are the same as the prefix of the sort columns
-            // 2. When all rows of the same value group are guaranteed to be in the same split. We disable splitting a file when isStreamingAggregationEnabled is true to make sure the property is guaranteed.
-            List<String> sortColumns = bucketProperty.getSortedBy().stream().map(SortingColumn::getColumnName).collect(toImmutableList());
-            if (bucketProperty.getBucketedBy().size() <= sortColumns.size()
-                    && bucketProperty.getBucketedBy().containsAll(sortColumns.subList(0, bucketProperty.getBucketedBy().size()))
-                    && isStreamingAggregationEnabled(session)) {
-                streamPartitionColumns = Optional.of(streamPartitionColumnsBuilder.build());
-            }
+            // 2. add sorted-by columns to localPropertyBuilder
+            table.getStorage().getBucketProperty().get().getSortedBy().forEach(sortingColumn -> {
+                ColumnHandle columnHandle = columnHandles.get(sortingColumn.getColumnName());
+                localPropertyBuilder.add(new SortingProperty<>(columnHandle, sortingColumn.getOrder().getSortOrder()));
+            });
+            streamPartitionColumns = Optional.of(streamPartitionColumnsBuilder.build());
         }
 
         return new ConnectorTableLayout(
@@ -2858,7 +2856,7 @@ public class HiveMetadata
                 tablePartitioning,
                 streamPartitionColumns,
                 discretePredicates,
-                localProperties.build(),
+                localPropertyBuilder.build(),
                 Optional.of(hiveLayoutHandle.getRemainingPredicate()));
     }
 
@@ -2978,7 +2976,8 @@ public class HiveMetadata
                 hiveLayoutHandle.isPushdownFilterEnabled(),
                 hiveLayoutHandle.getLayoutString(),
                 hiveLayoutHandle.getRequestedColumns(),
-                hiveLayoutHandle.isPartialAggregationsPushedDown());
+                hiveLayoutHandle.isPartialAggregationsPushedDown(),
+                hiveLayoutHandle.isAppendRowNumberEnabled());
     }
 
     @Override

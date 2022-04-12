@@ -19,13 +19,16 @@ import com.facebook.presto.common.type.DecimalType;
 import com.facebook.presto.common.type.Type;
 import com.facebook.presto.common.type.TypeSignatureParameter;
 import com.facebook.presto.common.type.VarcharType;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static com.facebook.presto.common.type.BigintType.BIGINT;
 import static com.facebook.presto.common.type.BooleanType.BOOLEAN;
@@ -42,6 +45,7 @@ import static com.facebook.presto.common.type.TinyintType.TINYINT;
 import static com.facebook.presto.common.type.VarbinaryType.VARBINARY;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
@@ -185,7 +189,8 @@ public class OrcType
                 .toString();
     }
 
-    private static List<OrcType> toOrcType(int nextFieldTypeIndex, Type type)
+    @VisibleForTesting
+    public static List<OrcType> toOrcType(int nextFieldTypeIndex, Type type)
     {
         if (BOOLEAN.equals(type)) {
             return ImmutableList.of(new OrcType(OrcTypeKind.BOOLEAN));
@@ -294,5 +299,26 @@ public class OrcType
         fieldTypesList.forEach(orcTypes::addAll);
 
         return orcTypes;
+    }
+
+    /**
+     * Converts zero-based column numbers to ORC node indexes.
+     * NOTE: This method ignores columns that are not included into the ORC types.
+     */
+    public static Set<Integer> mapColumnToNode(Set<Integer> columnIndexes, List<OrcType> orcTypes)
+    {
+        requireNonNull(columnIndexes, "columnIndexes is null");
+        requireNonNull(orcTypes, "orcTypes is null");
+
+        if (columnIndexes.isEmpty()) {
+            return ImmutableSet.of();
+        }
+
+        OrcType rootType = orcTypes.get(0);
+        int fieldCount = rootType.getFieldCount();
+        return columnIndexes.stream()
+                .filter(columnIndex -> columnIndex < fieldCount)
+                .map(rootType::getFieldTypeIndex)
+                .collect(toImmutableSet());
     }
 }

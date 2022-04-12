@@ -51,6 +51,7 @@ import static com.facebook.presto.orc.metadata.ColumnEncoding.ColumnEncodingKind
 import static com.facebook.presto.orc.metadata.ColumnEncoding.ColumnEncodingKind.DIRECT;
 import static com.facebook.presto.orc.metadata.ColumnEncoding.ColumnEncodingKind.DIRECT_V2;
 import static com.facebook.presto.orc.metadata.ColumnEncoding.ColumnEncodingKind.DWRF_DIRECT;
+import static com.facebook.presto.orc.metadata.ColumnEncoding.DEFAULT_SEQUENCE_ID;
 import static com.facebook.presto.orc.metadata.CompressionKind.SNAPPY;
 import static com.facebook.presto.orc.metadata.CompressionKind.ZSTD;
 import static com.google.common.base.Preconditions.checkState;
@@ -470,6 +471,7 @@ public class TestDictionaryColumnWriter
                 .build();
         return new SliceDictionaryColumnWriter(
                 COLUMN_ID,
+                DEFAULT_SEQUENCE_ID,
                 VARCHAR,
                 columnWriterOptions,
                 Optional.empty(),
@@ -822,7 +824,7 @@ public class TestDictionaryColumnWriter
     {
         List<Type> types = ImmutableList.of(type);
         try (TempFile tempFile = new TempFile()) {
-            OrcWriter writer = createOrcWriter(tempFile.getFile(), encoding, ZSTD, Optional.empty(), types, orcWriterOptions, new OrcWriterStats());
+            OrcWriter writer = createOrcWriter(tempFile.getFile(), encoding, ZSTD, Optional.empty(), types, orcWriterOptions, new NoOpOrcWriterStats());
 
             int index = 0;
             int batchId = 0;

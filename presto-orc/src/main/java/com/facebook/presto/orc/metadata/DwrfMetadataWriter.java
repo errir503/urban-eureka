@@ -285,10 +285,12 @@ public class DwrfMetadataWriter
         return writeProtobufObject(output, footerProtobuf);
     }
 
-    private static DwrfProto.Stream toStream(Stream stream)
+    @VisibleForTesting
+    static DwrfProto.Stream toStream(Stream stream)
     {
         DwrfProto.Stream.Builder streamBuilder = DwrfProto.Stream.newBuilder()
                 .setColumn(stream.getColumn())
+                .setSequence(stream.getSequence())
                 .setKind(toStreamKind(stream.getStreamKind()))
                 .setLength(stream.getLength())
                 .setUseVInts(stream.isUseVInts());
@@ -297,7 +299,8 @@ public class DwrfMetadataWriter
         return streamBuilder.build();
     }
 
-    private static DwrfProto.Stream.Kind toStreamKind(StreamKind streamKind)
+    @VisibleForTesting
+    static DwrfProto.Stream.Kind toStreamKind(StreamKind streamKind)
     {
         switch (streamKind) {
             case PRESENT:
@@ -314,6 +317,8 @@ public class DwrfMetadataWriter
                 return DwrfProto.Stream.Kind.DICTIONARY_COUNT;
             case ROW_INDEX:
                 return DwrfProto.Stream.Kind.ROW_INDEX;
+            case IN_MAP:
+                return DwrfProto.Stream.Kind.IN_MAP;
         }
         throw new IllegalArgumentException("Unsupported stream kind: " + streamKind);
     }
@@ -339,6 +344,8 @@ public class DwrfMetadataWriter
                 return DwrfProto.ColumnEncoding.Kind.DIRECT;
             case DICTIONARY:
                 return DwrfProto.ColumnEncoding.Kind.DICTIONARY;
+            case DWRF_MAP_FLAT:
+                return DwrfProto.ColumnEncoding.Kind.MAP_FLAT;
         }
         throw new IllegalArgumentException("Unsupported column encoding kind: " + columnEncodingKind);
     }

@@ -26,11 +26,11 @@ import com.facebook.presto.orc.ColumnWriterOptions;
 import com.facebook.presto.orc.DefaultOrcWriterFlushPolicy;
 import com.facebook.presto.orc.DwrfEncryptionInfo;
 import com.facebook.presto.orc.FileOrcDataSource;
+import com.facebook.presto.orc.NoOpOrcWriterStats;
 import com.facebook.presto.orc.OrcEncoding;
 import com.facebook.presto.orc.OrcTester;
 import com.facebook.presto.orc.OrcWriter;
 import com.facebook.presto.orc.OrcWriterOptions;
-import com.facebook.presto.orc.OrcWriterStats;
 import com.facebook.presto.orc.TempFile;
 import com.facebook.presto.orc.metadata.Footer;
 import com.facebook.presto.orc.metadata.OrcType;
@@ -59,6 +59,7 @@ import static com.facebook.presto.orc.OrcEncoding.DWRF;
 import static com.facebook.presto.orc.OrcTester.HIVE_STORAGE_TIME_ZONE;
 import static com.facebook.presto.orc.OrcTester.createOrcWriter;
 import static com.facebook.presto.orc.TestOrcMapNullKey.createMapType;
+import static com.facebook.presto.orc.metadata.ColumnEncoding.DEFAULT_SEQUENCE_ID;
 import static com.facebook.presto.orc.metadata.CompressionKind.ZSTD;
 import static io.airlift.slice.Slices.utf8Slice;
 import static io.airlift.units.DataSize.Unit.KILOBYTE;
@@ -81,6 +82,7 @@ public class TestWriterBlockRawSize
         List<OrcType> orcTypes = OrcType.createOrcRowType(0, ImmutableList.of("test_size_col"), ImmutableList.of(type));
         ColumnWriter columnWriter = ColumnWriters.createColumnWriter(
                 COLUMN_INDEX,
+                DEFAULT_SEQUENCE_ID,
                 orcTypes,
                 type,
                 COLUMN_WRITER_OPTIONS,
@@ -310,7 +312,7 @@ public class TestWriterBlockRawSize
 
         for (OrcEncoding encoding : OrcEncoding.values()) {
             try (TempFile tempFile = new TempFile()) {
-                OrcWriter writer = createOrcWriter(tempFile.getFile(), encoding, ZSTD, Optional.empty(), types, writerOptions, new OrcWriterStats());
+                OrcWriter writer = createOrcWriter(tempFile.getFile(), encoding, ZSTD, Optional.empty(), types, writerOptions, new NoOpOrcWriterStats());
                 for (int i = 0; i < numBlocksPerFile; i++) {
                     writer.write(new Page(blocks));
                 }

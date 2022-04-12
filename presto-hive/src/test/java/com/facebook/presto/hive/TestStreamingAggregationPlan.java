@@ -70,7 +70,7 @@ public class TestStreamingAggregationPlan
 
             // even with streaming aggregation enabled, non-ordered table that can't be applied streaming aggregation would use hash based aggregation
             assertPlan(
-                    streamingAggregationEnabled(),
+                    orderBasedExecutionEnabled(),
                     "SELECT custkey, COUNT(*) FROM test_customer \n" +
                             "WHERE ds = '2021-07-11' GROUP BY 1",
                     aggregationPlanWithNoStreaming("test_customer", false, "custkey"));
@@ -102,7 +102,7 @@ public class TestStreamingAggregationPlan
 
             // streaming aggregation enabled
             assertPlan(
-                    streamingAggregationEnabled(),
+                    orderBasedExecutionEnabled(),
                     "SELECT custkey, COUNT(*) FROM test_customer2 \n" +
                             "WHERE ds = '2021-07-11' GROUP BY 1",
                     node(
@@ -136,15 +136,27 @@ public class TestStreamingAggregationPlan
                     "SELECT *, '2021-07-11' as ds FROM customer LIMIT 1000\n");
 
             // can't enable stream
+            // since it's bucketed by custkey, the local exchange would be removed when order based execution is enabled
             assertPlan(
-                    streamingAggregationEnabled(),
+                    orderBasedExecutionEnabled(),
                     "SELECT custkey, COUNT(*) FROM test_customer3 \n" +
                             "WHERE ds = '2021-07-11' GROUP BY 1",
-                    aggregationPlanWithNoStreaming("test_customer3", false, "custkey"));
+                    node(
+                            OutputNode.class,
+                            node(
+                                    ExchangeNode.class,
+                                    aggregation(
+                                            singleGroupingSet("custkey"),
+                                            ImmutableMap.of(Optional.empty(), functionCall("count", ImmutableList.of())),
+                                            ImmutableList.of(), // non-streaming
+                                            ImmutableMap.of(),
+                                            Optional.empty(),
+                                            SINGLE,
+                                            tableScan("test_customer3", ImmutableMap.of("custkey", "custkey"))))));
 
             // can't enable stream
             assertPlan(
-                    streamingAggregationEnabled(),
+                    orderBasedExecutionEnabled(),
                     "SELECT name, COUNT(*) FROM test_customer3 \n" +
                             "WHERE ds = '2021-07-11' GROUP BY 1",
                     aggregationPlanWithNoStreaming("test_customer3", true, "name"));
@@ -168,7 +180,7 @@ public class TestStreamingAggregationPlan
 
             // streaming aggregation enabled
             assertPlan(
-                    streamingAggregationEnabled(),
+                    orderBasedExecutionEnabled(),
                     "SELECT custkey, name, COUNT(*) FROM test_customer4 \n" +
                             "WHERE ds = '2021-07-11' GROUP BY 1, 2",
                     node(
@@ -202,7 +214,7 @@ public class TestStreamingAggregationPlan
                     "SELECT *, '2021-07-11' as ds FROM customer LIMIT 1000\n");
 
             // can't enable stream
-            assertPlan(streamingAggregationEnabled(),
+            assertPlan(orderBasedExecutionEnabled(),
                     "SELECT custkey, COUNT(*) FROM test_customer5 \n" +
                             "WHERE ds = '2021-07-11' GROUP BY 1", aggregationPlanWithNoStreaming("test_customer5", false, "custkey"));
         }
@@ -225,7 +237,7 @@ public class TestStreamingAggregationPlan
                     "SELECT *, '2021-07-11' as ds FROM customer LIMIT 1000\n");
 
             // can enable streaming aggregation
-            assertPlan(streamingAggregationEnabled(),
+            assertPlan(orderBasedExecutionEnabled(),
                     "SELECT custkey, name, COUNT(*) FROM test_customer6 \n" +
                             "WHERE ds = '2021-07-11' GROUP BY 1, 2",
                     node(
@@ -247,34 +259,36 @@ public class TestStreamingAggregationPlan
     }
 
     @Test
-    public void testGroupbySupersetOfSortedKeys()
+    public void testGroupbySameKeysOfSortedbyKeysWithReverseOrder()
     {
         QueryRunner queryRunner = getQueryRunner();
 
         try {
-            queryRunner.execute("CREATE TABLE test_customer7 WITH ( \n" +
-                    "  bucket_count = 4, bucketed_by = ARRAY['custkey'], \n" +
-                    "  sorted_by = ARRAY['custkey'], partitioned_by=array['ds'], \n" +
+            queryRunner.execute("CREATE TABLE test_customer6_2 WITH ( \n" +
+                    "  bucket_count = 4, bucketed_by = ARRAY['custkey', 'name'], \n" +
+                    "  sorted_by = ARRAY['custkey', 'name'], partitioned_by=array['ds'], \n" +
                     "  format = 'DWRF' ) AS \n" +
                     "SELECT *, '2021-07-11' as ds FROM customer LIMIT 1000\n");
 
-            // can't enable streaming aggregation, but streaming aggregation session property would disable splittable
-            assertPlan(
-                    streamingAggregationEnabled(),
-                    "SELECT custkey, name, COUNT(*) FROM test_customer7 \n" +
+            // can enable streaming aggregation
+            assertPlan(orderBasedExecutionEnabled(),
+                    "SELECT name, custkey, COUNT(*) FROM test_customer6_2 \n" +
                             "WHERE ds = '2021-07-11' GROUP BY 1, 2",
-                    anyTree(aggregation(
-                            singleGroupingSet("custkey", "name"),
-                            // note: partial aggregation function has no parameter
-                            ImmutableMap.of(Optional.empty(), functionCall("count", ImmutableList.of())),
-                            ImmutableList.of(), // non-streaming
-                            ImmutableMap.of(),
-                            Optional.empty(),
-                            SINGLE,
-                            node(ProjectNode.class, tableScan("test_customer7", ImmutableMap.of("custkey", "custkey", "name", "name"))))));
+                    node(
+                            OutputNode.class,
+                            node(
+                                    ExchangeNode.class,
+                                    aggregation(
+                                            singleGroupingSet("custkey", "name"),
+                                            ImmutableMap.of(Optional.empty(), functionCall("count", ImmutableList.of())),
+                                            ImmutableList.of("custkey", "name"), // streaming
+                                            ImmutableMap.of(),
+                                            Optional.empty(),
+                                            SINGLE,
+                                            tableScan("test_customer6_2", ImmutableMap.of("custkey", "custkey", "name", "name"))))));
         }
         finally {
-            queryRunner.execute("DROP TABLE IF EXISTS test_customer7");
+            queryRunner.execute("DROP TABLE IF EXISTS test_customer6_2");
         }
     }
 
@@ -292,7 +306,7 @@ public class TestStreamingAggregationPlan
 
             // can't enable streaming aggregation
             assertPlan(
-                    streamingAggregationEnabled(),
+                    orderBasedExecutionEnabled(),
                     "SELECT name, COUNT(*) FROM test_customer8 \n" +
                             "WHERE ds = '2021-07-11' GROUP BY 1",
                     aggregationPlanWithNoStreaming("test_customer8", true, "name"));
@@ -302,7 +316,40 @@ public class TestStreamingAggregationPlan
         }
     }
 
-    //todo: add streaming aggregation support when grouping keys are prefix Of sorted keys
+    @Test
+    public void testGroupbyKeysPrefixOfSortedKeys()
+    {
+        QueryRunner queryRunner = getQueryRunner();
+
+        try {
+            queryRunner.execute("CREATE TABLE test_customer9 WITH ( \n" +
+                    "  bucket_count = 4, bucketed_by = ARRAY['custkey'], \n" +
+                    "  sorted_by = ARRAY['custkey', 'name'], partitioned_by=array['ds'], \n" +
+                    "  format = 'DWRF' ) AS \n" +
+                    "SELECT *, '2021-07-11' as ds FROM customer LIMIT 1000\n");
+
+            // can enable streaming aggregation
+            assertPlan(
+                    orderBasedExecutionEnabled(),
+                    "SELECT custkey, COUNT(*) FROM test_customer9 \n" +
+                            "WHERE ds = '2021-07-11' GROUP BY 1",
+                    node(
+                            OutputNode.class,
+                            node(
+                                    ExchangeNode.class,
+                                    aggregation(
+                                            singleGroupingSet("custkey"),
+                                            ImmutableMap.of(Optional.empty(), functionCall("count", ImmutableList.of())),
+                                            ImmutableList.of("custkey"), // streaming
+                                            ImmutableMap.of(),
+                                            Optional.empty(),
+                                            SINGLE,
+                                            tableScan("test_customer9", ImmutableMap.of("custkey", "custkey"))))));
+        }
+        finally {
+            queryRunner.execute("DROP TABLE IF EXISTS test_customer9");
+        }
+    }
 
     // Partition keys
     @Test
@@ -311,29 +358,29 @@ public class TestStreamingAggregationPlan
         QueryRunner queryRunner = getQueryRunner();
 
         try {
-            queryRunner.execute("CREATE TABLE test_customer9 WITH ( \n" +
+            queryRunner.execute("CREATE TABLE test_customer10 WITH ( \n" +
                     "  bucket_count = 4, bucketed_by = ARRAY['custkey'], \n" +
                     "  sorted_by = ARRAY['custkey'], partitioned_by=array['ds'], \n" +
                     "  format = 'DWRF' ) AS \n" +
                     "SELECT *, '2021-07-11' as ds FROM customer LIMIT 1000\n");
-            queryRunner.execute("INSERT INTO test_customer9 \n" +
+            queryRunner.execute("INSERT INTO test_customer10 \n" +
                     "SELECT *, '2021-07-12' as ds FROM tpch.sf1.customer LIMIT 1000");
 
             // can't enable streaming aggregation when querying multiple partitions without grouping by partition keys
             assertPlan(
-                    streamingAggregationEnabled(),
-                    "SELECT custkey, COUNT(*) FROM test_customer9 \n" +
+                    orderBasedExecutionEnabled(),
+                    "SELECT custkey, COUNT(*) FROM test_customer10 \n" +
                             "WHERE ds = '2021-07-11' or ds = '2021-07-12' GROUP BY 1",
-                    aggregationPlanWithNoStreaming("test_customer9", false, "custkey"));
+                    aggregationPlanWithNoStreaming("test_customer10", false, "custkey"));
 
             //todo: add streaming aggregation support when grouping keys contain all of the partition keys
         }
         finally {
-            queryRunner.execute("DROP TABLE IF EXISTS test_customer9");
+            queryRunner.execute("DROP TABLE IF EXISTS test_customer10");
         }
     }
 
-    private Session streamingAggregationEnabled()
+    private Session orderBasedExecutionEnabled()
     {
         return Session.builder(getQueryRunner().getDefaultSession())
                 .setCatalogSessionProperty(HIVE_CATALOG, ORDER_BASED_EXECUTION_ENABLED, "true")
