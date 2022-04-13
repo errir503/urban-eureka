@@ -645,7 +645,9 @@ public class PrestoSparkQueryExecutionFactory
         long peakTaskTotalMemoryInBytes = 0;
         long peakNodeTotalMemoryInBytes = 0;
 
-        for (StageInfo stageInfo : getAllStages(rootStage)) {
+        List<StageInfo> allStages = getAllStages(rootStage);
+
+        for (StageInfo stageInfo : allStages) {
             StageExecutionInfo stageExecutionInfo = stageInfo.getLatestAttemptExecutionInfo();
             for (TaskInfo taskInfo : stageExecutionInfo.getTasks()) {
                 // there's no way to know how many tasks were running in parallel in Spark
@@ -664,6 +666,7 @@ public class PrestoSparkQueryExecutionFactory
         QueryStats queryStats = QueryStats.create(
                 queryStateTimer,
                 rootStage,
+                allStages,
                 peakRunningTasks,
                 succinctBytes(peakUserMemoryReservationInBytes),
                 succinctBytes(peakTotalMemoryReservationInBytes),
@@ -700,7 +703,7 @@ public class PrestoSparkQueryExecutionFactory
                 warningCollector.getWarnings(),
                 planAndMore.map(PlanAndMore::getInputs).orElse(ImmutableSet.of()),
                 planAndMore.flatMap(PlanAndMore::getOutput),
-                true,
+                queryState.isDone(),
                 sparkQueueName.map(ResourceGroupId::new),
                 planAndMore.flatMap(PlanAndMore::getQueryType),
                 Optional.empty(),

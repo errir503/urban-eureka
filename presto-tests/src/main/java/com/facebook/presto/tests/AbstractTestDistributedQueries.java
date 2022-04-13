@@ -333,6 +333,16 @@ public abstract class AbstractTestDistributedQueries
         assertFalse(getQueryRunner().tableExists(session, table));
     }
 
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "Regexp matching interrupted", timeOut = 30_000)
+    public void testRunawayRegexAnalyzerTimeout()
+    {
+        Session session = Session.builder(getSession())
+                .setSystemProperty(SystemSessionProperties.QUERY_ANALYZER_TIMEOUT, "1s")
+                .build();
+
+        computeActual(session, "select REGEXP_EXTRACT('runaway_regex-is-evaluated-infinitely - xxx\"}', '.*runaway_(.*?)+-+xxx.*')");
+    }
+
     @Test
     public void testInsertIntoNotNullColumn()
     {
@@ -926,6 +936,12 @@ public abstract class AbstractTestDistributedQueries
     public void testLargeQuerySuccess()
     {
         assertQuery("SELECT " + Joiner.on(" AND ").join(nCopies(500, "1 = 1")), "SELECT true");
+    }
+
+    @Test
+    public void testExtraLargeQuerySuccess()
+    {
+        assertQuery("SELECT " + Joiner.on(" AND ").join(nCopies(1000, "1 = 1")), "SELECT true");
     }
 
     @Test

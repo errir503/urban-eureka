@@ -156,6 +156,7 @@ public class FeaturesConfig
     private boolean pushLimitThroughOuterJoin = true;
 
     private Duration iterativeOptimizerTimeout = new Duration(3, MINUTES); // by default let optimizer wait a long time in case it retrieves some data from ConnectorMetadata
+    private Duration queryAnalyzerTimeout = new Duration(3, MINUTES);
     private boolean enableDynamicFiltering;
     private int dynamicFilteringMaxPerDriverRowCount = 100;
     private DataSize dynamicFilteringMaxPerDriverSize = new DataSize(10, KILOBYTE);
@@ -220,7 +221,7 @@ public class FeaturesConfig
     private boolean preferMergeJoin;
 
     private int maxStageCountForEagerScheduling = 25;
-    private boolean roundRobinShuffleBeforePartialDistinctLimit;
+    private boolean quickDistinctLimitEnabled;
 
     private double hyperloglogStandardErrorWarningThreshold = 0.004;
 
@@ -1107,6 +1108,19 @@ public class FeaturesConfig
     public FeaturesConfig setIterativeOptimizerTimeout(Duration timeout)
     {
         this.iterativeOptimizerTimeout = timeout;
+        return this;
+    }
+
+    public Duration getQueryAnalyzerTimeout()
+    {
+        return this.queryAnalyzerTimeout;
+    }
+
+    @Config("planner.query-analyzer-timeout")
+    @ConfigDescription("Maximum running time for the query analyzer in case the processing takes too long or is stuck in an infinite loop.")
+    public FeaturesConfig setQueryAnalyzerTimeout(Duration timeout)
+    {
+        this.queryAnalyzerTimeout = timeout;
         return this;
     }
 
@@ -2044,16 +2058,16 @@ public class FeaturesConfig
         return this;
     }
 
-    public boolean isRoundRobinShuffleBeforePartialDistinctLimit()
+    public boolean isQuickDistinctLimitEnabled()
     {
-        return roundRobinShuffleBeforePartialDistinctLimit;
+        return quickDistinctLimitEnabled;
     }
 
-    @Config("optimizer.round-robin-shuffle-before-partial-distinct-limit")
-    @ConfigDescription("Add a round robin shuffle before partial distinct limit")
-    public FeaturesConfig setRoundRobinShuffleBeforePartialDistinctLimit(boolean roundRobinShuffleBeforePartialDistinctLimit)
+    @Config("optimizer.quick-distinct-limit-enabled")
+    @ConfigDescription("Enable quick distinct limit queries that give results as soon as a new distinct value is found")
+    public FeaturesConfig setQuickDistinctLimitEnabled(boolean quickDistinctLimitEnabled)
     {
-        this.roundRobinShuffleBeforePartialDistinctLimit = roundRobinShuffleBeforePartialDistinctLimit;
+        this.quickDistinctLimitEnabled = quickDistinctLimitEnabled;
         return this;
     }
 }
