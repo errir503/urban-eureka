@@ -756,6 +756,10 @@ public final class SqlFormatter
                     builder.append(" LIKE ")
                             .append(formatStringLiteral(value)));
 
+            node.getEscape().ifPresent((value) ->
+                    builder.append(" ESCAPE ")
+                            .append(formatStringLiteral(value)));
+
             return null;
         }
 
@@ -880,6 +884,14 @@ public final class SqlFormatter
         protected Void visitShowSession(ShowSession node, Integer context)
         {
             builder.append("SHOW SESSION");
+
+            node.getLikePattern().ifPresent((value) ->
+                    builder.append(" LIKE ")
+                            .append(formatStringLiteral(value)));
+
+            node.getEscape().ifPresent((value) ->
+                    builder.append(" ESCAPE ")
+                            .append(formatStringLiteral(value)));
 
             return null;
         }

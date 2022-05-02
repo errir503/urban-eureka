@@ -699,14 +699,17 @@ public class TestSqlParser
     @Test
     public void testShowSession()
     {
-        assertStatement("SHOW SESSION", new ShowSession());
+        assertStatement("SHOW SESSION", new ShowSession(Optional.empty(), Optional.empty()));
+        assertStatement("SHOW SESSION LIKE '%'", new ShowSession(Optional.of("%"), Optional.empty()));
+        assertStatement("SHOW SESSION LIKE '%' ESCAPE '$'", new ShowSession(Optional.of("%"), Optional.of("$")));
     }
 
     @Test
     public void testShowCatalogs()
     {
-        assertStatement("SHOW CATALOGS", new ShowCatalogs(Optional.empty()));
-        assertStatement("SHOW CATALOGS LIKE '%'", new ShowCatalogs(Optional.of("%")));
+        assertStatement("SHOW CATALOGS", new ShowCatalogs(Optional.empty(), Optional.empty()));
+        assertStatement("SHOW CATALOGS LIKE '%'", new ShowCatalogs(Optional.of("%"), Optional.empty()));
+        assertStatement("SHOW CATALOGS LIKE '%$_%' ESCAPE '$'", new ShowCatalogs(Optional.of("%$_%"), Optional.of("$")));
     }
 
     @Test

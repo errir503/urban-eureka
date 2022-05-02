@@ -55,6 +55,7 @@ import static com.facebook.presto.SystemSessionProperties.KEY_BASED_SAMPLING_ENA
 import static com.facebook.presto.SystemSessionProperties.KEY_BASED_SAMPLING_FUNCTION;
 import static com.facebook.presto.SystemSessionProperties.KEY_BASED_SAMPLING_PERCENTAGE;
 import static com.facebook.presto.SystemSessionProperties.OFFSET_CLAUSE_ENABLED;
+import static com.facebook.presto.SystemSessionProperties.OPTIMIZE_CASE_EXPRESSION_PREDICATE;
 import static com.facebook.presto.SystemSessionProperties.OPTIMIZE_JOINS_WITH_EMPTY_SOURCES;
 import static com.facebook.presto.SystemSessionProperties.QUICK_DISTINCT_LIMIT_ENABLED;
 import static com.facebook.presto.common.type.BigintType.BIGINT;
@@ -2565,6 +2566,32 @@ public abstract class AbstractTestQueries
     }
 
     @Test
+    public void testShowCatalogsLikeWithEscape()
+    {
+        try {
+            MaterializedResult result = computeActual(getSession(), "SHOW CATALOGS LIKE 't$_%' ESCAPE ''");
+            assertTrue(false);
+        }
+        catch (Exception e) {
+            assertEquals("Escape string must be a single character", e.getMessage());
+        }
+
+        try {
+            MaterializedResult result = computeActual(getSession(), "SHOW CATALOGS LIKE 't$_%' ESCAPE '$$'");
+            assertTrue(false);
+        }
+        catch (Exception e) {
+            assertEquals("Escape string must be a single character", e.getMessage());
+        }
+
+        MaterializedResult result = computeActual(getSession(), "SHOW CATALOGS LIKE '%testing$_%' ESCAPE '$'");
+        assertEquals("[[testing_catalog]]", result.getMaterializedRows().toString());
+
+        result = computeActual(getSession(), "SHOW CATALOGS LIKE '$_%' ESCAPE '$'");
+        assertEquals("[]", result.getMaterializedRows().toString());
+    }
+
+    @Test
     public void testShowSchemas()
     {
         MaterializedResult result = computeActual("SHOW SCHEMAS");
@@ -2875,6 +2902,43 @@ public abstract class AbstractTestQueries
                 new MaterializedRow(1, TESTING_CATALOG + ".connector_string", "bar string", "connector default", "varchar", "connector string property"));
         assertEquals(properties.get(TESTING_CATALOG + ".connector_long"),
                 new MaterializedRow(1, TESTING_CATALOG + ".connector_long", "11", "33", "bigint", "connector long property"));
+
+        // Show session like
+        result = computeActual(session, "SHOW SESSION LIKE '%test%'");
+
+        properties = Maps.uniqueIndex(result.getMaterializedRows(), input -> {
+            assertEquals(input.getFieldCount(), 5);
+            return (String) input.getField(0);
+        });
+
+        assertEquals(properties.get("test_string"), new MaterializedRow(1, "test_string", "foo string", "test default", "varchar", "test string property"));
+        assertEquals(properties.get("test_long"), new MaterializedRow(1, "test_long", "424242", "42", "bigint", "test long property"));
+
+        // Show session like with escape
+        result = computeActual(session, "SHOW SESSION LIKE '%test$_long%' ESCAPE '$'");
+
+        properties = Maps.uniqueIndex(result.getMaterializedRows(), input -> {
+            assertEquals(input.getFieldCount(), 5);
+            return (String) input.getField(0);
+        });
+
+        assertEquals(properties.get("test_long"), new MaterializedRow(1, "test_long", "424242", "42", "bigint", "test long property"));
+
+        try {
+            computeActual(session, "SHOW SESSION LIKE 't$_%' ESCAPE ''");
+            assertTrue(false);
+        }
+        catch (Exception e) {
+            assertEquals("Escape string must be a single character", e.getMessage());
+        }
+
+        try {
+            computeActual(session, "SHOW SESSION LIKE 't$_%' ESCAPE '$$'");
+            assertTrue(false);
+        }
+        catch (Exception e) {
+            assertEquals("Escape string must be a single character", e.getMessage());
+        }
     }
 
     @Test
@@ -5497,6 +5561,42 @@ public abstract class AbstractTestQueries
         assertQuery(
                 "SELECT CASE x WHEN 1 THEN 1 WHEN 5 THEN 5 WHEN 3 THEN 10 ELSE -1 END FROM (SELECT ORDERKEY x FROM orders where orderkey <= 10)",
                 "SELECT CASE x WHEN 1 THEN 1 WHEN 5 THEN 5 WHEN 3 THEN 10 ELSE -1 END FROM (SELECT ORDERKEY x FROM orders where orderkey <= 10)");
+    }
+
+    @Test
+    public void testCasePredicateRewrite()
+    {
+        Session caseExpressionRewriteEnabled = Session.builder(getSession())
+                .setSystemProperty(OPTIMIZE_CASE_EXPRESSION_PREDICATE, "true")
+                .build();
+
+        assertQuery(
+                caseExpressionRewriteEnabled,
+                "SELECT LINENUMBER FROM LINEITEM WHERE (CASE WHEN QUANTITY <= 15 THEN 'SMALL' WHEN (QUANTITY > 15 AND QUANTITY <= 30) THEN 'MEDIUM' ELSE 'LARGE' END) = 'SMALL'");
+
+        assertQuery(
+                caseExpressionRewriteEnabled,
+                "SELECT LINENUMBER FROM LINEITEM WHERE 'MEDIUM' = (CASE WHEN QUANTITY <= 15 THEN 'SMALL' WHEN (QUANTITY > 15 AND QUANTITY <= 30) THEN 'MEDIUM' ELSE 'LARGE' END)");
+
+        assertQuery(
+                caseExpressionRewriteEnabled,
+                "SELECT LINENUMBER FROM LINEITEM WHERE (CASE WHEN QUANTITY <= 15 THEN 'SMALL' WHEN (QUANTITY > 15 AND QUANTITY <= 30) THEN 'MEDIUM' ELSE 'LARGE' END) = 'LARGE'");
+
+        assertQuery(
+                caseExpressionRewriteEnabled,
+                "SELECT SUM(TOTALPRICE) FROM ORDERS WHERE (CASE ORDERSTATUS WHEN 'F' THEN 1 WHEN 'O' THEN 2 WHEN 'P' THEN 3 ELSE -1 END) = 2");
+
+        assertQuery(
+                caseExpressionRewriteEnabled,
+                "SELECT SUM(TOTALPRICE) FROM ORDERS WHERE 1 < (CASE ORDERSTATUS WHEN 'F' THEN 1 WHEN 'O' THEN 2 WHEN 'P' THEN 3 ELSE -1 END)");
+
+        assertQuery(
+                caseExpressionRewriteEnabled,
+                "SELECT SUM(TOTALPRICE) FROM ORDERS WHERE (CASE ORDERSTATUS WHEN 'F' THEN 1 WHEN 'O' THEN 2 WHEN 'P' THEN 3 ELSE 2 END) = 2");
+
+        assertQuery(
+                caseExpressionRewriteEnabled,
+                "SELECT ORDERSTATUS, ORDERPRIORITY, TOTALPRICE FROM ORDERS WHERE (CASE WHEN ORDERSTATUS='F' THEN 1 WHEN (CASE WHEN ORDERPRIORITY = '5-LOW' THEN true ELSE false END) THEN 2 WHEN ORDERSTATUS='O' THEN 3 ELSE -1 END) > 1");
     }
 
     @Test
