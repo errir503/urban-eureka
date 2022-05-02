@@ -14,6 +14,7 @@
 package com.facebook.presto.hive;
 
 import com.facebook.presto.common.RuntimeStats;
+import com.facebook.presto.common.RuntimeUnit;
 
 import java.util.Optional;
 
@@ -79,10 +80,10 @@ public class HiveFileContext
         T getExtraFileInfo();
     }
 
-    public void incrementCounter(String name, long value)
+    public void incrementCounter(String name, RuntimeUnit unit, long value)
     {
         if (verboseRuntimeStatsEnabled) {
-            stats.addMetricValue(name, value);
+            stats.addMetricValue(name, unit, value);
         }
     }
 

@@ -178,6 +178,7 @@ import static com.facebook.presto.common.RuntimeMetricName.GET_TABLE_HANDLE_TIME
 import static com.facebook.presto.common.RuntimeMetricName.GET_TABLE_METADATA_TIME_NANOS;
 import static com.facebook.presto.common.RuntimeMetricName.GET_VIEW_TIME_NANOS;
 import static com.facebook.presto.common.RuntimeMetricName.SKIP_READING_FROM_MATERIALIZED_VIEW_COUNT;
+import static com.facebook.presto.common.RuntimeUnit.NONE;
 import static com.facebook.presto.common.type.BigintType.BIGINT;
 import static com.facebook.presto.common.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.common.type.TypeSignature.parseTypeSignature;
@@ -585,7 +586,7 @@ class StatementAnalyzer
                     accessControl,
                     session.getIdentity(),
                     ImmutableMultimap.<QualifiedObjectName, Subfield>builder()
-                            .putAll(tableName, metadata.getColumnHandles(session, tableHandle).keySet().stream().map(Subfield::new).collect(toImmutableSet()))
+                            .putAll(tableName, metadata.getColumnHandles(session, tableHandle).keySet().stream().map(column -> new Subfield(column, ImmutableList.of())).collect(toImmutableSet()))
                             .build());
             try {
                 accessControl.checkCanInsertIntoTable(session.getRequiredTransactionId(), session.getIdentity(), session.getAccessControlContext(), tableName);
@@ -1385,7 +1386,7 @@ class StatementAnalyzer
             String materializedViewCreateSql = connectorMaterializedViewDefinition.getOriginalSql();
 
             if (materializedViewStatus.isNotMaterialized() || materializedViewStatus.isTooManyPartitionsMissing()) {
-                session.getRuntimeStats().addMetricValue(SKIP_READING_FROM_MATERIALIZED_VIEW_COUNT, 1);
+                session.getRuntimeStats().addMetricValue(SKIP_READING_FROM_MATERIALIZED_VIEW_COUNT, NONE, 1);
                 return materializedViewCreateSql;
             }
 
@@ -1861,13 +1862,13 @@ class StatementAnalyzer
                     analysis.addTableColumnAndSubfieldReferences(
                             accessControl,
                             session.getIdentity(),
-                            ImmutableMultimap.of(leftField.get().getField().getOriginTable().get(), new Subfield(leftField.get().getField().getOriginColumnName().get())));
+                            ImmutableMultimap.of(leftField.get().getField().getOriginTable().get(), new Subfield(leftField.get().getField().getOriginColumnName().get(), ImmutableList.of())));
                 }
                 if (rightField.get().getField().getOriginTable().isPresent() && rightField.get().getField().getOriginColumnName().isPresent()) {
                     analysis.addTableColumnAndSubfieldReferences(
                             accessControl,
                             session.getIdentity(),
-                            ImmutableMultimap.of(rightField.get().getField().getOriginTable().get(), new Subfield(rightField.get().getField().getOriginColumnName().get())));
+                            ImmutableMultimap.of(rightField.get().getField().getOriginTable().get(), new Subfield(rightField.get().getField().getOriginColumnName().get(), ImmutableList.of())));
                 }
             }
 
