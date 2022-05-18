@@ -28,7 +28,6 @@ import java.util.Optional;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
-import static com.google.common.base.Verify.verify;
 
 public class BooleanOutputStream
         implements ValueOutputStream<BooleanStreamCheckpoint>
@@ -72,10 +71,11 @@ public class BooleanOutputStream
 
     public void writeBooleans(int count, boolean value)
     {
-        checkArgument(count >= 0, "count is negative");
         if (count == 0) {
             return;
         }
+
+        checkArgument(count > 0, "count must be positive");
 
         if (bitsInData != 0) {
             int bitsToWrite = Math.min(count, 8 - bitsInData);
@@ -84,20 +84,16 @@ public class BooleanOutputStream
             }
 
             bitsInData += bitsToWrite;
-            count -= bitsToWrite;
-            if (bitsInData == 8) {
-                flushData();
-            }
-            else {
+            if (bitsInData != 8) {
                 // there were not enough bits to fill the current data
-                verify(count == 0);
                 return;
             }
+
+            count -= bitsToWrite;
+            flushData();
         }
 
         // at this point there should be no pending data
-        verify(bitsInData == 0);
-
         // write 8 bits at a time
         while (count >= 8) {
             if (value) {

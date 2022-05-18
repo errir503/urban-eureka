@@ -14,8 +14,10 @@
 package com.facebook.presto.parquet.cache;
 
 import com.facebook.presto.parquet.ParquetDataSource;
+import org.apache.parquet.crypto.InternalFileDecryptor;
 
 import java.io.IOException;
+import java.util.Optional;
 
 public interface ParquetMetadataSource
 {
@@ -23,6 +25,7 @@ public interface ParquetMetadataSource
             ParquetDataSource parquetDataSource,
             long fileSize,
             boolean cacheable,
-            long modificationTime)
+            long modificationTime,
+            Optional<InternalFileDecryptor> fileDecryptor)
             throws IOException;
 }
