@@ -86,6 +86,8 @@ public class FeaturesConfig
     private JoinReorderingStrategy joinReorderingStrategy = JoinReorderingStrategy.AUTOMATIC;
     private PartialMergePushdownStrategy partialMergePushdownStrategy = PartialMergePushdownStrategy.NONE;
     private int maxReorderedJoins = 9;
+    private boolean useHistoryBasedPlanStatistics;
+    private boolean useExternalPlanStatistics;
     private boolean redistributeWrites = true;
     private boolean scaleWriters;
     private DataSize writerMinSize = new DataSize(32, MEGABYTE);
@@ -150,6 +152,7 @@ public class FeaturesConfig
     private double memoryRevokingThreshold = 0.9;
     private boolean parseDecimalLiteralsAsDouble;
     private boolean useMarkDistinct = true;
+    private boolean exploitConstraints;
     private boolean preferPartialAggregation = true;
     private PartialAggregationStrategy partialAggregationStrategy = PartialAggregationStrategy.ALWAYS;
     private double partialAggregationByteReductionThreshold = 0.5;
@@ -714,6 +717,30 @@ public class FeaturesConfig
         return this;
     }
 
+    public boolean isUseHistoryBasedPlanStatistics()
+    {
+        return useHistoryBasedPlanStatistics;
+    }
+
+    @Config("optimizer.use-history-based-plan-statistics")
+    public FeaturesConfig setUseHistoryBasedPlanStatistics(boolean useHistoryBasedPlanStatistics)
+    {
+        this.useHistoryBasedPlanStatistics = useHistoryBasedPlanStatistics;
+        return this;
+    }
+
+    public boolean isUseExternalPlanStatistics()
+    {
+        return useExternalPlanStatistics;
+    }
+
+    @Config("optimizer.use-external-plan-statistics")
+    public FeaturesConfig setUseExternalPlanStatistics(boolean useExternalPlanStatistics)
+    {
+        this.useExternalPlanStatistics = useExternalPlanStatistics;
+        return this;
+    }
+
     public AggregationPartitioningMergingStrategy getAggregationPartitioningMergingStrategy()
     {
         return aggregationPartitioningMergingStrategy;
@@ -824,6 +851,18 @@ public class FeaturesConfig
     public FeaturesConfig setUseMarkDistinct(boolean value)
     {
         this.useMarkDistinct = value;
+        return this;
+    }
+
+    public boolean isExploitConstraints()
+    {
+        return exploitConstraints;
+    }
+
+    @Config("optimizer.exploit-constraints")
+    public FeaturesConfig setExploitConstraints(boolean value)
+    {
+        this.exploitConstraints = value;
         return this;
     }
 
