@@ -33,13 +33,17 @@ import com.facebook.presto.common.block.SortOrder;
 import com.facebook.presto.common.type.ArrayType;
 import com.facebook.presto.common.type.RowType;
 import com.facebook.presto.common.type.Type;
-import com.facebook.presto.operator.GroupByIdBlock;
 import com.facebook.presto.operator.MarkDistinctHash;
 import com.facebook.presto.operator.PagesIndex;
 import com.facebook.presto.operator.UpdateMemory;
 import com.facebook.presto.operator.Work;
-import com.facebook.presto.operator.aggregation.AggregationMetadata.AccumulatorStateDescriptor;
+import com.facebook.presto.spi.function.JavaAggregationFunctionImplementation;
 import com.facebook.presto.spi.function.WindowIndex;
+import com.facebook.presto.spi.function.aggregation.Accumulator;
+import com.facebook.presto.spi.function.aggregation.AggregationMetadata.AccumulatorStateDescriptor;
+import com.facebook.presto.spi.function.aggregation.GroupByIdBlock;
+import com.facebook.presto.spi.function.aggregation.GroupedAccumulator;
+import com.facebook.presto.spi.function.aggregation.LambdaProvider;
 import com.facebook.presto.spi.storage.SerializedStorageHandle;
 import com.facebook.presto.spiller.StandaloneSpiller;
 import com.facebook.presto.spiller.StandaloneSpillerFactory;
@@ -295,6 +299,76 @@ public class GenericAccumulatorFactory
         catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static AccumulatorFactory generateAccumulatorFactory(
+            JavaAggregationFunctionImplementation functionImplementation,
+            List<Integer> argumentChannels,
+            Optional<Integer> maskChannel,
+            List<Type> sourceTypes,
+            List<Integer> orderByChannels,
+            List<SortOrder> orderings,
+            PagesIndex.Factory pagesIndexFactory,
+            boolean distinct,
+            JoinCompiler joinCompiler,
+            List<LambdaProvider> lambdaProviders,
+            boolean spillEnabled,
+            Session session,
+            StandaloneSpillerFactory standaloneSpillerFactory)
+    {
+        try {
+            Constructor<? extends Accumulator> accumulatorConstructor = functionImplementation.getAccumulatorClass().getConstructor(
+                    List.class,     /* List<AccumulatorStateDescriptor> stateDescriptors */
+                    List.class,     /* List<Integer> inputChannel */
+                    Optional.class, /* Optional<Integer> maskChannel */
+                    List.class      /* List<LambdaProvider> lambdaProviders */);
+
+            Constructor<? extends GroupedAccumulator> groupedAccumulatorConstructor = functionImplementation.getGroupedAccumulatorClass().getConstructor(
+                    List.class,     /* List<AccumulatorStateDescriptor> stateDescriptors */
+                    List.class,     /* List<Integer> inputChannel */
+                    Optional.class, /* Optional<Integer> maskChannel */
+                    List.class      /* List<LambdaProvider> lambdaProviders */);
+
+            return new GenericAccumulatorFactory(
+                    functionImplementation.getAggregationMetadata().getAccumulatorStateDescriptors(),
+                    accumulatorConstructor,
+                    groupedAccumulatorConstructor,
+                    lambdaProviders,
+                    argumentChannels,
+                    maskChannel,
+                    sourceTypes,
+                    orderByChannels,
+                    orderings,
+                    pagesIndexFactory,
+                    joinCompiler,
+                    session,
+                    distinct,
+                    spillEnabled,
+                    standaloneSpillerFactory);
+        }
+        catch (NoSuchMethodException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static AccumulatorFactory generateAccumulatorFactory(
+            JavaAggregationFunctionImplementation javaAggregationFunctionImplementation,
+            List<Integer> inputChannels, Optional<Integer> maskChannel)
+    {
+        return generateAccumulatorFactory(
+                javaAggregationFunctionImplementation,
+                inputChannels,
+                maskChannel,
+                ImmutableList.of(),
+                ImmutableList.of(),
+                ImmutableList.of(),
+                null,
+                false,
+                null,
+                ImmutableList.of(),
+                false,
+                null,
+                null);
     }
 
     private static class DistinctingAccumulator

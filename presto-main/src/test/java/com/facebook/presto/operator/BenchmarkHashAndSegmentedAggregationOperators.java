@@ -19,7 +19,7 @@ import com.facebook.presto.common.block.BlockBuilder;
 import com.facebook.presto.metadata.FunctionAndTypeManager;
 import com.facebook.presto.metadata.MetadataManager;
 import com.facebook.presto.operator.HashAggregationOperator.HashAggregationOperatorFactory;
-import com.facebook.presto.operator.aggregation.InternalAggregationFunction;
+import com.facebook.presto.spi.function.JavaAggregationFunctionImplementation;
 import com.facebook.presto.spi.plan.AggregationNode;
 import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.spiller.SpillerFactory;
@@ -58,6 +58,7 @@ import static com.facebook.presto.common.type.BigintType.BIGINT;
 import static com.facebook.presto.common.type.VarcharType.VARCHAR;
 import static com.facebook.presto.operator.BenchmarkHashAndSegmentedAggregationOperators.Context.ROWS_PER_PAGE;
 import static com.facebook.presto.operator.BenchmarkHashAndSegmentedAggregationOperators.Context.TOTAL_PAGES;
+import static com.facebook.presto.operator.aggregation.GenericAccumulatorFactory.generateAccumulatorFactory;
 import static com.facebook.presto.sql.analyzer.TypeSignatureProvider.fromTypes;
 import static io.airlift.units.DataSize.Unit.GIGABYTE;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
@@ -81,9 +82,9 @@ public class BenchmarkHashAndSegmentedAggregationOperators
     private static final MetadataManager metadata = MetadataManager.createTestMetadataManager();
     private static final FunctionAndTypeManager FUNCTION_AND_TYPE_MANAGER = metadata.getFunctionAndTypeManager();
 
-    private static final InternalAggregationFunction LONG_SUM = FUNCTION_AND_TYPE_MANAGER.getAggregateFunctionImplementation(
+    private static final JavaAggregationFunctionImplementation LONG_SUM = FUNCTION_AND_TYPE_MANAGER.getJavaAggregateFunctionImplementation(
             FUNCTION_AND_TYPE_MANAGER.lookupFunction("sum", fromTypes(BIGINT)));
-    private static final InternalAggregationFunction COUNT = FUNCTION_AND_TYPE_MANAGER.getAggregateFunctionImplementation(
+    private static final JavaAggregationFunctionImplementation COUNT = FUNCTION_AND_TYPE_MANAGER.getJavaAggregateFunctionImplementation(
             FUNCTION_AND_TYPE_MANAGER.lookupFunction("count", ImmutableList.of()));
 
     @State(Thread)
@@ -141,8 +142,8 @@ public class BenchmarkHashAndSegmentedAggregationOperators
                     ImmutableList.of(),
                     AggregationNode.Step.SINGLE,
                     false,
-                    ImmutableList.of(COUNT.bind(ImmutableList.of(2), Optional.empty()),
-                            LONG_SUM.bind(ImmutableList.of(2), Optional.empty())),
+                    ImmutableList.of(generateAccumulatorFactory(COUNT, ImmutableList.of(2), Optional.empty()),
+                            generateAccumulatorFactory(LONG_SUM, ImmutableList.of(2), Optional.empty())),
                     hashChannel,
                     Optional.empty(),
                     100_000,
