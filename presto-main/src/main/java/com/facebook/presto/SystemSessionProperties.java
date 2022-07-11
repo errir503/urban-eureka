@@ -217,6 +217,7 @@ public final class SystemSessionProperties
     public static final String OFFSET_CLAUSE_ENABLED = "offset_clause_enabled";
     public static final String VERBOSE_EXCEEDED_MEMORY_LIMIT_ERRORS_ENABLED = "verbose_exceeded_memory_limit_errors_enabled";
     public static final String MATERIALIZED_VIEW_DATA_CONSISTENCY_ENABLED = "materialized_view_data_consistency_enabled";
+    public static final String CONSIDER_QUERY_FILTERS_FOR_MATERIALIZED_VIEW_PARTITIONS = "consider-query-filters-for-materialized-view-partitions";
     public static final String QUERY_OPTIMIZATION_WITH_MATERIALIZED_VIEW_ENABLED = "query_optimization_with_materialized_view_enabled";
     public static final String AGGREGATION_IF_TO_FILTER_REWRITE_STRATEGY = "aggregation_if_to_filter_rewrite_strategy";
     public static final String RESOURCE_AWARE_SCHEDULING_STRATEGY = "resource_aware_scheduling_strategy";
@@ -229,7 +230,6 @@ public final class SystemSessionProperties
     public static final String HYPERLOGLOG_STANDARD_ERROR_WARNING_THRESHOLD = "hyperloglog_standard_error_warning_threshold";
     public static final String PREFER_MERGE_JOIN = "prefer_merge_join";
     public static final String SEGMENTED_AGGREGATION_ENABLED = "segmented_aggregation_enabled";
-    public static final String USE_HISTORY_BASED_PLAN_STATISTICS = "use_history_based_plan_statistics";
     public static final String USE_EXTERNAL_PLAN_STATISTICS = "use_external_plan_statistics";
 
     //TODO: Prestissimo related session properties that are temporarily put here. They will be relocated in the future
@@ -1193,6 +1193,11 @@ public final class SystemSessionProperties
                         featuresConfig.isMaterializedViewDataConsistencyEnabled(),
                         false),
                 booleanProperty(
+                        CONSIDER_QUERY_FILTERS_FOR_MATERIALIZED_VIEW_PARTITIONS,
+                        "When enabled and counting materialized view partitions, filters partition domains not in base query",
+                        featuresConfig.isMaterializedViewPartitionFilteringEnabled(),
+                        false),
+                booleanProperty(
                         QUERY_OPTIMIZATION_WITH_MATERIALIZED_VIEW_ENABLED,
                         "Enable query optimization with materialized view",
                         featuresConfig.isQueryOptimizationWithMaterializedViewEnabled(),
@@ -1303,11 +1308,6 @@ public final class SystemSessionProperties
                         QUICK_DISTINCT_LIMIT_ENABLED,
                         "Enable quick distinct limit queries that give results as soon as a new distinct value is found",
                         featuresConfig.isQuickDistinctLimitEnabled(),
-                        false),
-                booleanProperty(
-                        USE_HISTORY_BASED_PLAN_STATISTICS,
-                        "Use history based plan statistics in query optimizer",
-                        featuresConfig.isUseHistoryBasedPlanStatistics(),
                         false),
                 booleanProperty(
                         USE_EXTERNAL_PLAN_STATISTICS,
@@ -2144,6 +2144,11 @@ public final class SystemSessionProperties
         return session.getSystemProperty(MATERIALIZED_VIEW_DATA_CONSISTENCY_ENABLED, Boolean.class);
     }
 
+    public static boolean isMaterializedViewPartitionFilteringEnabled(Session session)
+    {
+        return session.getSystemProperty(CONSIDER_QUERY_FILTERS_FOR_MATERIALIZED_VIEW_PARTITIONS, Boolean.class);
+    }
+
     public static boolean isQueryOptimizationWithMaterializedViewEnabled(Session session)
     {
         return session.getSystemProperty(QUERY_OPTIMIZATION_WITH_MATERIALIZED_VIEW_ENABLED, Boolean.class);
@@ -2202,11 +2207,6 @@ public final class SystemSessionProperties
     public static boolean isQuickDistinctLimitEnabled(Session session)
     {
         return session.getSystemProperty(QUICK_DISTINCT_LIMIT_ENABLED, Boolean.class);
-    }
-
-    public static boolean useHistoryBasedPlanStatisticsEnabled(Session session)
-    {
-        return session.getSystemProperty(USE_HISTORY_BASED_PLAN_STATISTICS, Boolean.class);
     }
 
     public static boolean useExternalPlanStatisticsEnabled(Session session)

@@ -10,7 +10,7 @@
 
     <groupId>com.facebook.presto</groupId>
     <artifactId>presto-root</artifactId>
-    <version>0.275-SNAPSHOT</version>
+    <version>0.276-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>presto-root</name>
@@ -2024,6 +2024,12 @@
                 <groupId>com.facebook.presto</groupId>
                 <artifactId>presto-delta</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.presto.ranger</groupId>
+                <artifactId>ranger-apache</artifactId>
+                <version>2.1.0-2</version>
             </dependency>
 
             <!-- force newer version to be used for dependencies -->

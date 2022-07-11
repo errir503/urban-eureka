@@ -21,6 +21,9 @@ import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.SessionPropertyManager;
 import com.facebook.presto.spi.MaterializedViewStatus;
 import com.facebook.presto.spi.SchemaTableName;
+import com.facebook.presto.spi.relation.DomainTranslator;
+import com.facebook.presto.spi.relation.RowExpression;
+import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.spi.security.Identity;
 import com.facebook.presto.sql.planner.LiteralEncoder;
 import com.facebook.presto.sql.tree.BooleanLiteral;
@@ -51,7 +54,7 @@ import static com.facebook.presto.sql.tree.LogicalBinaryExpression.Operator.OR;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
 
-public class MaterializedViewUtils
+public final class MaterializedViewUtils
 {
     public static final QualifiedName MIN = QualifiedName.of("MIN");
     public static final QualifiedName MAX = QualifiedName.of("MAX");
@@ -159,5 +162,17 @@ public class MaterializedViewUtils
             closure.put(node, visited);
         }
         return closure.build();
+    }
+
+    public static TupleDomain<String> getDomainFromFilter(Session session, DomainTranslator domainTranslator, RowExpression rowExpression)
+    {
+        DomainTranslator.ExtractionResult<String> predicateFromBaseQuery = domainTranslator.fromPredicate(
+                session.toConnectorSession(),
+                rowExpression,
+                (baseFilterExpression, domain) -> baseFilterExpression instanceof VariableReferenceExpression
+                        ? Optional.of(((VariableReferenceExpression) baseFilterExpression).getName())
+                        : Optional.empty());
+
+        return predicateFromBaseQuery.getTupleDomain();
     }
 }

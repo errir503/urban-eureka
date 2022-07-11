@@ -117,6 +117,7 @@ import com.facebook.presto.operator.StageExecutionDescriptor;
 import com.facebook.presto.operator.TableCommitContext;
 import com.facebook.presto.operator.TaskContext;
 import com.facebook.presto.operator.index.IndexJoinLookupStats;
+import com.facebook.presto.server.ConnectorMetadataUpdateHandleJsonSerde;
 import com.facebook.presto.server.PluginManager;
 import com.facebook.presto.server.PluginManagerConfig;
 import com.facebook.presto.server.SessionPropertyDefaults;
@@ -369,7 +370,7 @@ public class LocalQueryRunner
         this.nodePartitioningManager = new NodePartitioningManager(nodeScheduler, partitioningProviderManager, new NodeSelectionStats());
         this.planOptimizerManager = new ConnectorPlanOptimizerManager();
         this.distributedMetadataManager = new ConnectorMetadataUpdaterManager();
-        this.connectorTypeSerdeManager = new ConnectorTypeSerdeManager();
+        this.connectorTypeSerdeManager = new ConnectorTypeSerdeManager(new ConnectorMetadataUpdateHandleJsonSerde());
 
         this.blockEncodingManager = new BlockEncodingManager();
         featuresConfig.setIgnoreStatsCalculatorFailures(false);
@@ -402,7 +403,7 @@ public class LocalQueryRunner
         this.statsNormalizer = new StatsNormalizer();
         this.scalarStatsCalculator = new ScalarStatsCalculator(metadata);
         this.filterStatsCalculator = new FilterStatsCalculator(metadata, scalarStatsCalculator, statsNormalizer);
-        this.historyBasedPlanStatisticsManager = new HistoryBasedPlanStatisticsManager(metadata);
+        this.historyBasedPlanStatisticsManager = new HistoryBasedPlanStatisticsManager();
         this.statsCalculator = createNewStatsCalculator(metadata, scalarStatsCalculator, statsNormalizer, filterStatsCalculator, historyBasedPlanStatisticsManager);
         this.taskCountEstimator = new TaskCountEstimator(() -> nodeCountForStats);
         this.costCalculator = new CostCalculatorUsingExchanges(taskCountEstimator);
