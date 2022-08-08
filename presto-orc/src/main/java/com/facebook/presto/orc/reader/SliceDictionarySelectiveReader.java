@@ -55,7 +55,10 @@ import static com.facebook.presto.orc.metadata.Stream.StreamKind.ROW_GROUP_DICTI
 import static com.facebook.presto.orc.metadata.Stream.StreamKind.ROW_GROUP_DICTIONARY_LENGTH;
 import static com.facebook.presto.orc.reader.SelectiveStreamReaders.initializeOutputPositions;
 import static com.facebook.presto.orc.reader.SliceSelectiveStreamReader.computeTruncatedLength;
-import static com.facebook.presto.orc.stream.MissingInputStreamSource.missingStreamSource;
+import static com.facebook.presto.orc.stream.MissingInputStreamSource.getBooleanMissingStreamSource;
+import static com.facebook.presto.orc.stream.MissingInputStreamSource.getByteArrayMissingStreamSource;
+import static com.facebook.presto.orc.stream.MissingInputStreamSource.getLongMissingStreamSource;
+import static com.facebook.presto.orc.stream.MissingInputStreamSource.getRowGroupDictionaryLengthMissingStreamSource;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
@@ -92,6 +95,7 @@ public class SliceDictionarySelectiveReader
     private final StreamDescriptor streamDescriptor;
     private final int maxCodePointCount;
     private final boolean isCharType;
+    private final boolean isLowMemory;
 
     private byte[] dictionaryData = EMPTY_DICTIONARY_DATA;
     private int[] dictionaryOffsetVector = EMPTY_DICTIONARY_OFFSETS;
@@ -104,13 +108,13 @@ public class SliceDictionarySelectiveReader
 
     private VariableWidthBlock dictionary = new VariableWidthBlock(1, wrappedBuffer(EMPTY_DICTIONARY_DATA), EMPTY_DICTIONARY_OFFSETS, Optional.of(new boolean[] {true}));
 
-    private InputStreamSource<BooleanInputStream> presentStreamSource = missingStreamSource(BooleanInputStream.class);
+    private InputStreamSource<BooleanInputStream> presentStreamSource = getBooleanMissingStreamSource();
     private BooleanInputStream presentStream;
 
     private BooleanInputStream inDictionaryStream;
 
-    private InputStreamSource<ByteArrayInputStream> stripeDictionaryDataStreamSource = missingStreamSource(ByteArrayInputStream.class);
-    private InputStreamSource<LongInputStream> stripeDictionaryLengthStreamSource = missingStreamSource(LongInputStream.class);
+    private InputStreamSource<ByteArrayInputStream> stripeDictionaryDataStreamSource = getByteArrayMissingStreamSource();
+    private InputStreamSource<LongInputStream> stripeDictionaryLengthStreamSource = getLongMissingStreamSource();
     private boolean stripeDictionaryOpen;
     // The dictionaries will be wrapped in getBlock(). It's set to false when opening a new dictionary (be it stripe dictionary or rowgroup dictionary). When there is only stripe
     // dictionary but no rowgroup dictionaries, we shall set it to false only when opening the stripe dictionary while not for every rowgroup. It is set to true when the dictionary
@@ -120,11 +124,11 @@ public class SliceDictionarySelectiveReader
     private int stripeDictionarySize;
     private int currentDictionarySize;
 
-    private InputStreamSource<ByteArrayInputStream> rowGroupDictionaryDataStreamSource = missingStreamSource(ByteArrayInputStream.class);
-    private InputStreamSource<BooleanInputStream> inDictionaryStreamSource = missingStreamSource(BooleanInputStream.class);
-    private InputStreamSource<RowGroupDictionaryLengthInputStream> rowGroupDictionaryLengthStreamSource = missingStreamSource(RowGroupDictionaryLengthInputStream.class);
+    private InputStreamSource<ByteArrayInputStream> rowGroupDictionaryDataStreamSource = getByteArrayMissingStreamSource();
+    private InputStreamSource<BooleanInputStream> inDictionaryStreamSource = getBooleanMissingStreamSource();
+    private InputStreamSource<RowGroupDictionaryLengthInputStream> rowGroupDictionaryLengthStreamSource = getRowGroupDictionaryLengthMissingStreamSource();
 
-    private InputStreamSource<LongInputStream> dataStreamSource = missingStreamSource(LongInputStream.class);
+    private InputStreamSource<LongInputStream> dataStreamSource = getLongMissingStreamSource();
     private LongInputStream dataStream;
 
     private boolean rowGroupOpen;
@@ -136,7 +140,12 @@ public class SliceDictionarySelectiveReader
     private int outputPositionCount;
     private boolean valuesInUse;
 
-    public SliceDictionarySelectiveReader(StreamDescriptor streamDescriptor, Optional<TupleDomainFilter> filter, Optional<Type> outputType, OrcLocalMemoryContext systemMemoryContext)
+    public SliceDictionarySelectiveReader(
+            StreamDescriptor streamDescriptor,
+            Optional<TupleDomainFilter> filter,
+            Optional<Type> outputType,
+            OrcLocalMemoryContext systemMemoryContext,
+            boolean isLowMemory)
     {
         this.streamDescriptor = requireNonNull(streamDescriptor, "streamDescriptor is null");
         this.filter = requireNonNull(filter, "filter is null").orElse(null);
@@ -148,6 +157,7 @@ public class SliceDictionarySelectiveReader
         this.maxCodePointCount = orcType == null ? 0 : orcType.getLength().orElse(-1);
         this.valueWithPadding = maxCodePointCount < 0 ? null : new byte[maxCodePointCount];
         this.isCharType = orcType.getOrcTypeKind() == CHAR;
+        this.isLowMemory = isLowMemory;
         this.outputRequired = outputType.isPresent();
         checkArgument(filter.isPresent() || outputRequired, "filter must be present if outputRequired is false");
     }
@@ -250,7 +260,7 @@ public class SliceDictionarySelectiveReader
                 else {
                     length = inRowDictionary ? rowGroupDictionaryLength[rawIndex] : stripeDictionaryLength[rawIndex];
                 }
-                if (nonDeterministicFilter) {
+                if (evaluationStatus == null) {
                     evaluateFilter(position, index, length);
                 }
                 else {
@@ -621,12 +631,12 @@ public class SliceDictionarySelectiveReader
                 .getDictionarySize();
         stripeDictionaryOpen = false;
 
-        presentStreamSource = missingStreamSource(BooleanInputStream.class);
-        dataStreamSource = missingStreamSource(LongInputStream.class);
+        presentStreamSource = getBooleanMissingStreamSource();
+        dataStreamSource = getLongMissingStreamSource();
 
-        inDictionaryStreamSource = missingStreamSource(BooleanInputStream.class);
-        rowGroupDictionaryLengthStreamSource = missingStreamSource(RowGroupDictionaryLengthInputStream.class);
-        rowGroupDictionaryDataStreamSource = missingStreamSource(ByteArrayInputStream.class);
+        inDictionaryStreamSource = getBooleanMissingStreamSource();
+        rowGroupDictionaryLengthStreamSource = getRowGroupDictionaryLengthMissingStreamSource();
+        rowGroupDictionaryDataStreamSource = getByteArrayMissingStreamSource();
 
         readOffset = 0;
 
@@ -693,9 +703,13 @@ public class SliceDictionarySelectiveReader
     private void initiateEvaluationStatus(int positionCount)
     {
         verify(positionCount > 0);
-
-        evaluationStatus = ensureCapacity(evaluationStatus, positionCount - 1);
-        fill(evaluationStatus, 0, evaluationStatus.length, FILTER_NOT_EVALUATED);
+        if (nonDeterministicFilter && !isLowMemory) {
+            evaluationStatus = ensureCapacity(evaluationStatus, positionCount - 1);
+            fill(evaluationStatus, 0, evaluationStatus.length, FILTER_NOT_EVALUATED);
+        }
+        else {
+            evaluationStatus = null;
+        }
     }
 
     private BlockLease newLease(Block block)
