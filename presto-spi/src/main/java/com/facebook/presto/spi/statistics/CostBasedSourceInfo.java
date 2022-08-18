@@ -11,28 +11,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.pinot;
+package com.facebook.presto.spi.statistics;
 
-import com.facebook.presto.pinot.udf.PinotFunctions;
-import com.facebook.presto.spi.Plugin;
-import com.facebook.presto.spi.connector.ConnectorFactory;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
-
-import java.util.Set;
-
-public class PinotPlugin
-        implements Plugin
+/**
+ * Describes plan statistics which are derived from cost based optimizer.
+ */
+public class CostBasedSourceInfo
+        extends SourceInfo
 {
+    public CostBasedSourceInfo() {}
+
     @Override
-    public Iterable<ConnectorFactory> getConnectorFactories()
+    public int hashCode()
     {
-        return ImmutableList.of(new PinotConnectorFactory());
+        return 0;
     }
 
     @Override
-    public Set<Class<?>> getFunctions()
+    public boolean equals(Object obj)
     {
-        return ImmutableSet.of(PinotFunctions.class);
+        return getClass() == obj.getClass();
+    }
+
+    @Override
+    public String toString()
+    {
+        return "CostBasedSourceInfo{}";
     }
 }
