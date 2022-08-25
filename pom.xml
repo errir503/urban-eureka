@@ -10,7 +10,7 @@
 
     <groupId>com.facebook.presto</groupId>
     <artifactId>presto-root</artifactId>
-    <version>0.276-SNAPSHOT</version>
+    <version>0.277-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>presto-root</name>
@@ -64,7 +64,7 @@
         <dep.nexus-staging-plugin.version>1.6.8</dep.nexus-staging-plugin.version>
         <dep.asm.version>9.0</dep.asm.version>
         <dep.gcs.version>1.9.17</dep.gcs.version>
-        <dep.alluxio.version>2.7.3</dep.alluxio.version>
+        <dep.alluxio.version>2.8.1</dep.alluxio.version>
         <dep.slf4j.version>1.7.32</dep.slf4j.version>
         <dep.kafka.version>2.3.1</dep.kafka.version>
         <dep.pinot.version>0.10.0</dep.pinot.version>
@@ -94,6 +94,7 @@
     <modules>
         <module>presto-atop</module>
         <module>presto-spi</module>
+        <module>presto-analyzer</module>
         <module>presto-cache</module>
         <module>presto-jmx</module>
         <module>presto-record-decoder</module>
@@ -209,6 +210,12 @@
                 <artifactId>presto-spi</artifactId>
                 <version>${project.version}</version>
                 <type>test-jar</type>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.presto</groupId>
+                <artifactId>presto-analyzer</artifactId>
+                <version>${project.version}</version>
             </dependency>
 
             <dependency>
