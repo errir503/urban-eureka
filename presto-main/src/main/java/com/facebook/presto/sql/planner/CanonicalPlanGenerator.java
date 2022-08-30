@@ -15,11 +15,14 @@ package com.facebook.presto.sql.planner;
 
 import com.facebook.presto.common.plan.PlanCanonicalizationStrategy;
 import com.facebook.presto.spi.ColumnHandle;
+import com.facebook.presto.spi.ConnectorId;
+import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.plan.AggregationNode;
 import com.facebook.presto.spi.plan.AggregationNode.Aggregation;
 import com.facebook.presto.spi.plan.AggregationNode.GroupingSetDescriptor;
 import com.facebook.presto.spi.plan.Assignments;
 import com.facebook.presto.spi.plan.FilterNode;
+import com.facebook.presto.spi.plan.LimitNode;
 import com.facebook.presto.spi.plan.Ordering;
 import com.facebook.presto.spi.plan.OrderingScheme;
 import com.facebook.presto.spi.plan.PlanNode;
@@ -34,10 +37,15 @@ import com.facebook.presto.sql.planner.plan.GroupIdNode;
 import com.facebook.presto.sql.planner.plan.InternalPlanVisitor;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.OutputNode;
+import com.facebook.presto.sql.planner.plan.TableFinishNode;
+import com.facebook.presto.sql.planner.plan.TableWriterNode;
 import com.facebook.presto.sql.planner.plan.UnnestNode;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.TreeMultimap;
@@ -63,6 +71,7 @@ import static com.facebook.presto.sql.planner.CanonicalPartitioningScheme.getCan
 import static com.facebook.presto.sql.planner.CanonicalTableScanNode.CanonicalTableHandle.getCanonicalTableHandle;
 import static com.facebook.presto.sql.planner.RowExpressionVariableInliner.inlineVariables;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static java.lang.String.format;
 import static java.util.Comparator.comparing;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toCollection;
@@ -72,6 +81,7 @@ public class CanonicalPlanGenerator
 {
     private final PlanNodeIdAllocator planNodeidAllocator = new PlanNodeIdAllocator();
     private final PlanVariableAllocator variableAllocator = new PlanVariableAllocator();
+    // TODO: DEFAULT strategy has a very different canonicalizaiton implementation, refactor it into a separate class.
     private final PlanCanonicalizationStrategy strategy;
     private final ObjectMapper objectMapper;
 
@@ -101,7 +111,107 @@ public class CanonicalPlanGenerator
     @Override
     public Optional<PlanNode> visitPlan(PlanNode node, Context context)
     {
+        // TODO: Support canonicalization for more plan node types
         return Optional.empty();
+    }
+
+    @Override
+    public Optional<PlanNode> visitStatsEquivalentPlanNodeWithLimit(StatsEquivalentPlanNodeWithLimit node, Context context)
+    {
+        if (strategy == DEFAULT) {
+            return Optional.empty();
+        }
+
+        Optional<PlanNode> limit = node.getLimit().accept(this, context);
+        if (!limit.isPresent()) {
+            return Optional.empty();
+        }
+
+        Optional<PlanNode> plan = node.getPlan().accept(this, context);
+        if (!plan.isPresent()) {
+            return Optional.empty();
+        }
+
+        PlanNode result = new StatsEquivalentPlanNodeWithLimit(planNodeidAllocator.getNextId(), plan.get(), (LimitNode) limit.get());
+        context.addPlan(node, new CanonicalPlan(result, strategy));
+        return Optional.of(result);
+    }
+
+    @Override
+    public Optional<PlanNode> visitTableWriter(TableWriterNode node, Context context)
+    {
+        if (strategy == DEFAULT) {
+            return Optional.empty();
+        }
+
+        Optional<PlanNode> source = node.getSource().accept(this, context);
+        if (!source.isPresent()) {
+            return Optional.empty();
+        }
+
+        List<VariableReferenceExpression> columns = node.getColumns().stream()
+                .map(variable -> rename(variable, context))
+                .sorted()
+                .collect(toImmutableList());
+        List<String> columnNames = node.getColumnNames().stream().sorted().collect(toImmutableList());
+
+        PlanNode result = new TableWriterNode(
+                Optional.empty(),
+                planNodeidAllocator.getNextId(),
+                source.get(),
+                node.getTarget().map(target -> CanonicalWriterTarget.from(target)),
+                node.getRowCountVariable(),
+                node.getFragmentVariable(),
+                node.getTableCommitContextVariable(),
+                columns,
+                columnNames,
+                ImmutableSet.of(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty());
+        context.addPlan(node, new CanonicalPlan(result, strategy));
+        return Optional.of(result);
+    }
+
+    @Override
+    public Optional<PlanNode> visitTableFinish(TableFinishNode node, Context context)
+    {
+        if (strategy == DEFAULT) {
+            return Optional.empty();
+        }
+
+        Optional<PlanNode> source = node.getSource().accept(this, context);
+        if (!source.isPresent()) {
+            return Optional.empty();
+        }
+
+        PlanNode result = new TableFinishNode(
+                Optional.empty(),
+                planNodeidAllocator.getNextId(),
+                source.get(),
+                node.getTarget().map(target -> CanonicalWriterTarget.from(target)),
+                node.getRowCountVariable(),
+                Optional.empty(),
+                Optional.empty());
+        context.addPlan(node, new CanonicalPlan(result, strategy));
+        return Optional.of(result);
+    }
+
+    @Override
+    public Optional<PlanNode> visitLimit(LimitNode node, Context context)
+    {
+        if (strategy == DEFAULT) {
+            return Optional.empty();
+        }
+
+        Optional<PlanNode> source = node.getSource().accept(this, context);
+        if (!source.isPresent()) {
+            return Optional.empty();
+        }
+
+        PlanNode result = new LimitNode(Optional.empty(), planNodeidAllocator.getNextId(), source.get(), node.getCount(), node.getStep());
+        context.addPlan(node, new CanonicalPlan(result, strategy));
+        return Optional.of(result);
     }
 
     @Override
@@ -477,6 +587,53 @@ public class CanonicalPlanGenerator
         return Optional.of(canonicalPlan);
     }
 
+    private static class CanonicalWriterTarget
+            extends TableWriterNode.WriterTarget
+    {
+        private final ConnectorId connectorId;
+        // Include classname of WriterTarget, as it signifies type of table operation.
+        private final String writerTargetType;
+
+        @JsonCreator
+        public CanonicalWriterTarget(
+                @JsonProperty("connectorId") ConnectorId connectorId,
+                @JsonProperty("writerTargetType") String writerTargetType)
+        {
+            this.connectorId = connectorId;
+            this.writerTargetType = writerTargetType;
+        }
+
+        @JsonProperty
+        public ConnectorId getConnectorId()
+        {
+            return connectorId;
+        }
+
+        @JsonProperty
+        public String getWriterTargetType()
+        {
+            return writerTargetType;
+        }
+
+        @Override
+        public SchemaTableName getSchemaTableName()
+        {
+            // Just return a sample table name, which is always same
+            return new SchemaTableName("schema", "table");
+        }
+
+        @Override
+        public String toString()
+        {
+            return format("WriterTarget{connectorId: %s, type: %s}", connectorId, writerTargetType);
+        }
+
+        private static CanonicalWriterTarget from(TableWriterNode.WriterTarget target)
+        {
+            return new CanonicalWriterTarget(target.getConnectorId(), target.getClass().getSimpleName());
+        }
+    }
+
     private static class RowExpressionReference
     {
         private final RowExpression rowExpression;
@@ -549,6 +706,13 @@ public class CanonicalPlanGenerator
         return type.equals(JoinNode.Type.INNER);
     }
 
+    private VariableReferenceExpression rename(VariableReferenceExpression variable, Context context)
+    {
+        VariableReferenceExpression newVariable = variableAllocator.newVariable(inlineAndCanonicalize(context.getExpressions(), variable));
+        context.mapExpression(variable, newVariable);
+        return newVariable;
+    }
+
     private static JoinNode.EquiJoinClause canonicalize(JoinNode.EquiJoinClause criteria, Context context)
     {
         VariableReferenceExpression left = inlineAndCanonicalize(context.getExpressions(), criteria.getLeft());
@@ -580,7 +744,7 @@ public class CanonicalPlanGenerator
             Map<VariableReferenceExpression, VariableReferenceExpression> context,
             T expression)
     {
-        return (T) canonicalizeRowExpression(inlineVariables(context::get, expression), false);
+        return inlineAndCanonicalize(context, expression, false);
     }
 
     private static <T extends RowExpression> T inlineAndCanonicalize(
@@ -588,7 +752,7 @@ public class CanonicalPlanGenerator
             T expression,
             boolean removeConstants)
     {
-        return (T) canonicalizeRowExpression(inlineVariables(context::get, expression), removeConstants);
+        return (T) canonicalizeRowExpression(inlineVariables(variable -> context.getOrDefault(variable, variable), expression), removeConstants);
     }
 
     private static class ColumnReference
