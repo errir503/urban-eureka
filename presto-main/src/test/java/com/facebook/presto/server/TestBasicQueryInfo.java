@@ -14,6 +14,7 @@
 package com.facebook.presto.server;
 
 import com.facebook.presto.common.RuntimeStats;
+import com.facebook.presto.common.resourceGroups.QueryType;
 import com.facebook.presto.cost.StatsAndCosts;
 import com.facebook.presto.execution.QueryInfo;
 import com.facebook.presto.execution.QueryStats;
@@ -22,7 +23,6 @@ import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.spi.StandardErrorCode;
 import com.facebook.presto.spi.eventlistener.StageGcStatistics;
 import com.facebook.presto.spi.memory.MemoryPoolId;
-import com.facebook.presto.spi.resourceGroups.QueryType;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -144,7 +144,8 @@ public class TestBasicQueryInfo
                         Optional.empty(),
                         ImmutableMap.of(),
                         ImmutableSet.of(),
-                        StatsAndCosts.empty()));
+                        StatsAndCosts.empty(),
+                        ImmutableList.of()));
 
         assertEquals(basicInfo.getQueryId().getId(), "0");
         assertEquals(basicInfo.getState(), RUNNING);

@@ -206,7 +206,9 @@ public class TestFeaturesConfig
                 .setPushRemoteExchangeThroughGroupId(false)
                 .setOptimizeMultipleApproxPercentileOnSameFieldEnabled(true)
                 .setNativeExecutionEnabled(false)
-                .setNativeExecutionExecutablePath("./presto_server"));
+                .setNativeExecutionExecutablePath("./presto_server")
+                .setRandomizeOuterJoinNullKeyEnabled(false)
+                .setOptimizeConditionalAggregationEnabled(false));
     }
 
     @Test
@@ -364,6 +366,8 @@ public class TestFeaturesConfig
                 .put("optimizer.optimize-multiple-approx-percentile-on-same-field", "false")
                 .put("native-execution-enabled", "true")
                 .put("native-execution-executable-path", "/bin/echo")
+                .put("optimizer.randomize-outer-join-null-key", "true")
+                .put("optimizer.optimize-conditional-aggregation-enabled", "true")
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -518,7 +522,9 @@ public class TestFeaturesConfig
                 .setPushRemoteExchangeThroughGroupId(true)
                 .setOptimizeMultipleApproxPercentileOnSameFieldEnabled(false)
                 .setNativeExecutionEnabled(true)
-                .setNativeExecutionExecutablePath("/bin/echo");
+                .setNativeExecutionExecutablePath("/bin/echo")
+                .setRandomizeOuterJoinNullKeyEnabled(true)
+                .setOptimizeConditionalAggregationEnabled(true);
         assertFullMapping(properties, expected);
     }
 

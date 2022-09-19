@@ -16,34 +16,40 @@ package com.facebook.presto.spi.statistics;
 import com.facebook.drift.annotations.ThriftConstructor;
 import com.facebook.drift.annotations.ThriftField;
 import com.facebook.drift.annotations.ThriftStruct;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.List;
 import java.util.Objects;
 
+import static com.facebook.drift.annotations.ThriftField.Requiredness.OPTIONAL;
 import static java.lang.String.format;
+import static java.util.Collections.emptyList;
+import static java.util.Collections.unmodifiableList;
 
 @ThriftStruct
 public class HistoricalPlanStatistics
 {
-    // TODO: Add more data for historical runs, like avg/min/max over last N days/runs
-    private final PlanStatistics lastRunStatistics;
+    private static final HistoricalPlanStatistics EMPTY = new HistoricalPlanStatistics(emptyList());
+
+    // Output plan statistics from previous runs
+    private final List<HistoricalPlanStatisticsEntry> lastRunsStatistics;
 
     @ThriftConstructor
-    public HistoricalPlanStatistics(@JsonProperty("lastRunStatistics") PlanStatistics lastRunStatistics)
+    public HistoricalPlanStatistics(List<HistoricalPlanStatisticsEntry> lastRunsStatistics)
     {
-        this.lastRunStatistics = lastRunStatistics;
+        // Check for nulls, to make it thrift backwards compatible
+        this.lastRunsStatistics = unmodifiableList(lastRunsStatistics == null ? emptyList() : lastRunsStatistics);
     }
 
-    @ThriftField(1)
-    public PlanStatistics getLastRunStatistics()
+    @ThriftField(value = 1, requiredness = OPTIONAL)
+    public List<HistoricalPlanStatisticsEntry> getLastRunsStatistics()
     {
-        return lastRunStatistics;
+        return lastRunsStatistics;
     }
 
     @Override
     public String toString()
     {
-        return format("lastRunStatistics: %s", lastRunStatistics);
+        return format("HistoricalPlanStatistics{lastRunsStatistics=%s}", lastRunsStatistics);
     }
 
     @Override
@@ -58,12 +64,17 @@ public class HistoricalPlanStatistics
 
         HistoricalPlanStatistics other = (HistoricalPlanStatistics) o;
 
-        return Objects.equals(lastRunStatistics, other.lastRunStatistics);
+        return Objects.equals(lastRunsStatistics, other.lastRunsStatistics);
     }
 
     @Override
     public int hashCode()
     {
-        return Objects.hash(lastRunStatistics);
+        return Objects.hash(lastRunsStatistics);
+    }
+
+    public static HistoricalPlanStatistics empty()
+    {
+        return EMPTY;
     }
 }

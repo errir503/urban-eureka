@@ -22,7 +22,7 @@ import com.facebook.presto.spi.statistics.HistoricalPlanStatistics;
 import com.facebook.presto.spi.statistics.HistoryBasedPlanStatisticsProvider;
 import com.facebook.presto.spi.statistics.HistoryBasedSourceInfo;
 import com.facebook.presto.spi.statistics.PlanStatistics;
-import com.facebook.presto.sql.planner.PlanHasher;
+import com.facebook.presto.sql.planner.PlanCanonicalInfoProvider;
 import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher;
@@ -48,6 +48,7 @@ import java.util.function.Supplier;
 
 import static com.facebook.presto.SystemSessionProperties.useHistoryBasedPlanStatisticsEnabled;
 import static com.facebook.presto.common.plan.PlanCanonicalizationStrategy.historyBasedPlanCanonicalizationStrategyList;
+import static com.facebook.presto.cost.HistoricalPlanStatisticsUtil.getPredictedPlanStatistics;
 import static com.facebook.presto.sql.planner.iterative.Plans.resolveGroupReferences;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.graph.Traverser.forTree;
@@ -58,7 +59,7 @@ public class HistoryBasedPlanStatisticsCalculator
         implements StatsCalculator
 {
     private static final List<Class<? extends PlanNode>> PRECOMPUTE_PLAN_NODES = ImmutableList.of(JoinNode.class, SemiJoinNode.class, AggregationNode.class);
-    private static final DataSize CACHE_SIZE_BYTES = new DataSize(2, DataSize.Unit.MEGABYTE);
+    private static final DataSize CACHE_SIZE_BYTES = new DataSize(10, DataSize.Unit.MEGABYTE);
 
     // For weight, we only consider size of hash, as PlanNodes are already in memory for running queries.
     // We use length of hash + 20 bytes to account for stats.
@@ -71,7 +72,7 @@ public class HistoryBasedPlanStatisticsCalculator
                 @Override
                 public HistoricalPlanStatistics load(PlanNodeWithHash key)
                 {
-                    return loadAll(Collections.singleton(key)).values().stream().findAny().orElseGet(() -> new HistoricalPlanStatistics(PlanStatistics.empty()));
+                    return loadAll(Collections.singleton(key)).values().stream().findAny().orElseGet(HistoricalPlanStatistics::empty);
                 }
 
                 @Override
@@ -80,7 +81,7 @@ public class HistoryBasedPlanStatisticsCalculator
                     Map<PlanNodeWithHash, HistoricalPlanStatistics> statistics = new HashMap<>(historyBasedPlanStatisticsProvider.get().getStats(ImmutableList.copyOf(keys)));
                     // loadAll excepts all keys to be written
                     for (PlanNodeWithHash key : keys) {
-                        statistics.putIfAbsent(key, new HistoricalPlanStatistics(PlanStatistics.empty()));
+                        statistics.putIfAbsent(key, HistoricalPlanStatistics.empty());
                     }
                     return ImmutableMap.copyOf(statistics);
                 }
@@ -88,16 +89,19 @@ public class HistoryBasedPlanStatisticsCalculator
 
     private final Supplier<HistoryBasedPlanStatisticsProvider> historyBasedPlanStatisticsProvider;
     private final StatsCalculator delegate;
-    private final PlanHasher planHasher;
+    private final PlanCanonicalInfoProvider planCanonicalInfoProvider;
+    private final HistoryBasedOptimizationConfig config;
 
     public HistoryBasedPlanStatisticsCalculator(
             Supplier<HistoryBasedPlanStatisticsProvider> historyBasedPlanStatisticsProvider,
             StatsCalculator delegate,
-            PlanHasher planHasher)
+            PlanCanonicalInfoProvider planCanonicalInfoProvider,
+            HistoryBasedOptimizationConfig config)
     {
         this.historyBasedPlanStatisticsProvider = requireNonNull(historyBasedPlanStatisticsProvider, "historyBasedPlanStatisticsProvider is null");
         this.delegate = requireNonNull(delegate, "delegate is null");
-        this.planHasher = requireNonNull(planHasher, "planHasher is null");
+        this.planCanonicalInfoProvider = requireNonNull(planCanonicalInfoProvider, "planHasher is null");
+        this.config = requireNonNull(config, "config is null");
     }
 
     @Override
@@ -129,9 +133,9 @@ public class HistoryBasedPlanStatisticsCalculator
     }
 
     @VisibleForTesting
-    public PlanHasher getPlanHasher()
+    public PlanCanonicalInfoProvider getPlanCanonicalInfoProvider()
     {
-        return planHasher;
+        return planCanonicalInfoProvider;
     }
 
     @VisibleForTesting
@@ -150,7 +154,7 @@ public class HistoryBasedPlanStatisticsCalculator
         ImmutableMap.Builder<PlanCanonicalizationStrategy, PlanNodeWithHash> allHashesBuilder = ImmutableMap.builder();
 
         for (PlanCanonicalizationStrategy strategy : historyBasedPlanCanonicalizationStrategyList()) {
-            Optional<String> hash = planHasher.hash(statsEquivalentPlanNode, strategy);
+            Optional<String> hash = planCanonicalInfoProvider.hash(session, statsEquivalentPlanNode, strategy);
             allHashesBuilder.put(strategy, new PlanNodeWithHash(statsEquivalentPlanNode, hash));
         }
 
@@ -177,16 +181,29 @@ public class HistoryBasedPlanStatisticsCalculator
         for (PlanCanonicalizationStrategy strategy : historyBasedPlanCanonicalizationStrategyList()) {
             for (Map.Entry<PlanNodeWithHash, HistoricalPlanStatistics> entry : statistics.entrySet()) {
                 if (allHashes.containsKey(strategy) && entry.getKey().getHash().isPresent() && allHashes.get(strategy).equals(entry.getKey())) {
-                    // TODO: Use better historical statistics
-                    return delegateStats.combineStats(entry.getValue().getLastRunStatistics(), new HistoryBasedSourceInfo(entry.getKey().getHash()));
+                    Optional<List<PlanStatistics>> inputTableStatistics = getPlanNodeInputTableStatistics(plan, session);
+                    if (inputTableStatistics.isPresent()) {
+                        PlanStatistics predictedPlanStatistics = getPredictedPlanStatistics(entry.getValue(), inputTableStatistics.get(), config);
+                        if (predictedPlanStatistics.getConfidence() > 0) {
+                            return delegateStats.combineStats(
+                                    predictedPlanStatistics,
+                                    new HistoryBasedSourceInfo(entry.getKey().getHash(), inputTableStatistics));
+                        }
+                    }
                 }
             }
         }
 
-        return statistics.values().stream()
-                .findAny()
-                .map(HistoricalPlanStatistics::getLastRunStatistics)
-                .map(planStatistics -> delegateStats.combineStats(planStatistics, new HistoryBasedSourceInfo(Optional.empty())))
-                .orElse(delegateStats);
+        return delegateStats;
+    }
+
+    private Optional<List<PlanStatistics>> getPlanNodeInputTableStatistics(PlanNode plan, Session session)
+    {
+        if (!useHistoryBasedPlanStatisticsEnabled(session) || !plan.getStatsEquivalentPlanNode().isPresent()) {
+            return Optional.empty();
+        }
+
+        PlanNode statsEquivalentPlanNode = plan.getStatsEquivalentPlanNode().get();
+        return planCanonicalInfoProvider.getInputTableStatistics(session, statsEquivalentPlanNode);
     }
 }

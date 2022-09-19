@@ -144,7 +144,9 @@ import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
 import com.facebook.presto.sql.planner.optimizations.PredicatePushDown;
 import com.facebook.presto.sql.planner.optimizations.PruneUnreferencedOutputs;
 import com.facebook.presto.sql.planner.optimizations.PushdownSubfields;
+import com.facebook.presto.sql.planner.optimizations.RandomizeNullKeyInOuterJoin;
 import com.facebook.presto.sql.planner.optimizations.ReplicateSemiJoinInDelete;
+import com.facebook.presto.sql.planner.optimizations.RewriteIfOverAggregation;
 import com.facebook.presto.sql.planner.optimizations.SetFlatteningOptimizer;
 import com.facebook.presto.sql.planner.optimizations.StatsRecordingPlanOptimizer;
 import com.facebook.presto.sql.planner.optimizations.TransformQuantifiedComparisonApplyToLateralJoin;
@@ -429,6 +431,19 @@ public class PlanOptimizers
                 estimatedExchangesCostCalculator,
                 ImmutableSet.of(new CombineApproxPercentileFunctions(metadata.getFunctionAndTypeManager()))));
 
+        // In RewriteIfOverAggregation, we can only optimize when the aggregation output is used in only one IF expression, and not used in any other expressions (excluding
+        // identity assignments). Hence we need to simplify projection assignments to combine/inline expressions in assignments so as to identify the candidate IF expressions.
+        builder.add(
+                new IterativeOptimizer(
+                        ruleStats,
+                        statsCalculator,
+                        estimatedExchangesCostCalculator,
+                        ImmutableSet.of(
+                                new PruneRedundantProjectionAssignments(),
+                                new InlineProjections(metadata.getFunctionAndTypeManager()),
+                                new RemoveRedundantIdentityProjections())),
+                new RewriteIfOverAggregation(metadata.getFunctionAndTypeManager()));
+
         builder.add(
                 caseExpressionPredicateRewriter,
                 new IterativeOptimizer(
@@ -598,6 +613,16 @@ public class PlanOptimizers
                             // Must run before AddExchanges and after ReplicateSemiJoinInDelete
                             // to avoid temporarily having an invalid plan
                             new DetermineSemiJoinDistributionType(costComparator, taskCountEstimator))));
+            builder.add(new RandomizeNullKeyInOuterJoin(metadata.getFunctionAndTypeManager()),
+                    new PruneUnreferencedOutputs(),
+                    new IterativeOptimizer(
+                            ruleStats,
+                            statsCalculator,
+                            estimatedExchangesCostCalculator,
+                            ImmutableSet.of(
+                                    new PruneRedundantProjectionAssignments(),
+                                    new InlineProjections(metadata.getFunctionAndTypeManager()),
+                                    new RemoveRedundantIdentityProjections())));
             builder.add(
                     new IterativeOptimizer(
                             ruleStats,
