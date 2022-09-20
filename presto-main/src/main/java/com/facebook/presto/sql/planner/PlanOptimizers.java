@@ -27,6 +27,7 @@ import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.iterative.properties.LogicalPropertiesProviderImpl;
 import com.facebook.presto.sql.planner.iterative.rule.AddIntermediateAggregations;
 import com.facebook.presto.sql.planner.iterative.rule.CanonicalizeExpressions;
+import com.facebook.presto.sql.planner.iterative.rule.CombineApproxPercentileFunctions;
 import com.facebook.presto.sql.planner.iterative.rule.CreatePartialTopN;
 import com.facebook.presto.sql.planner.iterative.rule.DesugarAtTimeZone;
 import com.facebook.presto.sql.planner.iterative.rule.DesugarCurrentUser;
@@ -88,6 +89,7 @@ import com.facebook.presto.sql.planner.iterative.rule.PushPartialAggregationThro
 import com.facebook.presto.sql.planner.iterative.rule.PushProjectionThroughExchange;
 import com.facebook.presto.sql.planner.iterative.rule.PushProjectionThroughUnion;
 import com.facebook.presto.sql.planner.iterative.rule.PushRemoteExchangeThroughAssignUniqueId;
+import com.facebook.presto.sql.planner.iterative.rule.PushRemoteExchangeThroughGroupId;
 import com.facebook.presto.sql.planner.iterative.rule.PushTableWriteThroughUnion;
 import com.facebook.presto.sql.planner.iterative.rule.PushTopNThroughUnion;
 import com.facebook.presto.sql.planner.iterative.rule.RemoveEmptyDelete;
@@ -421,6 +423,12 @@ public class PlanOptimizers
                 new TranslateExpressions(metadata, sqlParser).rules()));
         // After this point, all planNodes should not contain OriginalExpression
 
+        builder.add(new IterativeOptimizer(
+                ruleStats,
+                statsCalculator,
+                estimatedExchangesCostCalculator,
+                ImmutableSet.of(new CombineApproxPercentileFunctions(metadata.getFunctionAndTypeManager()))));
+
         builder.add(
                 caseExpressionPredicateRewriter,
                 new IterativeOptimizer(
@@ -623,6 +631,7 @@ public class PlanOptimizers
                 ImmutableSet.<Rule<?>>builder()
                         .add(new RemoveRedundantIdentityProjections())
                         .add(new PushRemoteExchangeThroughAssignUniqueId())
+                        .add(new PushRemoteExchangeThroughGroupId(metadata))
                         .add(new InlineProjections(metadata.getFunctionAndTypeManager()))
                         .build()));
 
