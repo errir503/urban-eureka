@@ -20,8 +20,6 @@ import com.facebook.presto.execution.QueryIdGenerator;
 import com.facebook.presto.execution.QueryInfo;
 import com.facebook.presto.execution.QueryManagerConfig;
 import com.facebook.presto.execution.QueryManagerStats;
-import com.facebook.presto.execution.QueryPreparer;
-import com.facebook.presto.execution.QueryPreparer.PreparedQuery;
 import com.facebook.presto.execution.QueryTracker;
 import com.facebook.presto.execution.resourceGroups.ResourceGroupManager;
 import com.facebook.presto.execution.warnings.WarningCollectorFactory;
@@ -40,6 +38,9 @@ import com.facebook.presto.spi.resourceGroups.SelectionCriteria;
 import com.facebook.presto.spi.security.AccessControlContext;
 import com.facebook.presto.spi.security.AuthorizedIdentity;
 import com.facebook.presto.spi.security.Identity;
+import com.facebook.presto.sql.analyzer.AnalyzerOptions;
+import com.facebook.presto.sql.analyzer.QueryPreparer;
+import com.facebook.presto.sql.analyzer.QueryPreparer.PreparedQuery;
 import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.util.concurrent.AbstractFuture;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -55,8 +56,9 @@ import java.util.Optional;
 import java.util.concurrent.Executor;
 
 import static com.facebook.presto.spi.StandardErrorCode.QUERY_TEXT_TOO_LARGE;
-import static com.facebook.presto.util.StatementUtils.getQueryType;
-import static com.facebook.presto.util.StatementUtils.isTransactionControlStatement;
+import static com.facebook.presto.sql.analyzer.utils.StatementUtils.getQueryType;
+import static com.facebook.presto.sql.analyzer.utils.StatementUtils.isTransactionControlStatement;
+import static com.facebook.presto.util.AnalyzerUtil.createAnalyzerOptions;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.util.concurrent.Futures.immediateFuture;
@@ -198,7 +200,8 @@ public class DispatchManager
             session = sessionSupplier.createSession(queryId, sessionContext, warningCollectorFactory, authorizedIdentity);
 
             // prepare query
-            preparedQuery = queryPreparer.prepareQuery(session, query, session.getWarningCollector());
+            AnalyzerOptions analyzerOptions = createAnalyzerOptions(session, session.getWarningCollector());
+            preparedQuery = queryPreparer.prepareQuery(analyzerOptions, query, session.getPreparedStatements(), session.getWarningCollector());
             query = preparedQuery.getFormattedQuery().orElse(query);
 
             // select resource group

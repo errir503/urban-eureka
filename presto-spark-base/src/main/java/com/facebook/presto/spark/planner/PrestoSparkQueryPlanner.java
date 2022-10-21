@@ -19,7 +19,6 @@ import com.facebook.presto.cost.CostCalculator;
 import com.facebook.presto.cost.StatsCalculator;
 import com.facebook.presto.execution.Input;
 import com.facebook.presto.execution.Output;
-import com.facebook.presto.execution.QueryPreparer.PreparedQuery;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.spark.PhysicalResourceSettings;
@@ -29,6 +28,7 @@ import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
 import com.facebook.presto.sql.analyzer.Analysis;
 import com.facebook.presto.sql.analyzer.Analyzer;
 import com.facebook.presto.sql.analyzer.QueryExplainer;
+import com.facebook.presto.sql.analyzer.QueryPreparer.PreparedQuery;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.InputExtractor;
 import com.facebook.presto.sql.planner.LogicalPlanner;
@@ -46,9 +46,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-import static com.facebook.presto.sql.ParameterUtils.parameterExtractor;
+import static com.facebook.presto.sql.analyzer.utils.ParameterUtils.parameterExtractor;
+import static com.facebook.presto.sql.analyzer.utils.StatementUtils.getQueryType;
 import static com.facebook.presto.sql.planner.LogicalPlanner.Stage.OPTIMIZED_AND_VALIDATED;
-import static com.facebook.presto.util.StatementUtils.getQueryType;
 import static java.util.Objects.requireNonNull;
 
 public class PrestoSparkQueryPlanner

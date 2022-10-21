@@ -16,6 +16,7 @@ package com.facebook.presto.sql.planner;
 import com.facebook.presto.common.plan.PlanCanonicalizationStrategy;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorId;
+import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.plan.AggregationNode;
 import com.facebook.presto.spi.plan.AggregationNode.Aggregation;
@@ -42,11 +43,13 @@ import com.facebook.presto.sql.planner.plan.TableWriterNode;
 import com.facebook.presto.sql.planner.plan.UnnestNode;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.TreeMultimap;
 
@@ -67,6 +70,7 @@ import static com.facebook.presto.common.plan.PlanCanonicalizationStrategy.REMOV
 import static com.facebook.presto.common.type.IntegerType.INTEGER;
 import static com.facebook.presto.expressions.CanonicalRowExpressionRewriter.canonicalizeRowExpression;
 import static com.facebook.presto.expressions.LogicalRowExpressions.extractConjuncts;
+import static com.facebook.presto.spi.StandardErrorCode.PLAN_SERIALIZATION_ERROR;
 import static com.facebook.presto.sql.planner.CanonicalPartitioningScheme.getCanonicalPartitioningScheme;
 import static com.facebook.presto.sql.planner.CanonicalTableScanNode.CanonicalTableHandle.getCanonicalTableHandle;
 import static com.facebook.presto.sql.planner.RowExpressionVariableInliner.inlineVariables;
@@ -133,7 +137,7 @@ public class CanonicalPlanGenerator
             return Optional.empty();
         }
 
-        PlanNode result = new StatsEquivalentPlanNodeWithLimit(planNodeidAllocator.getNextId(), plan.get(), (LimitNode) limit.get());
+        PlanNode result = new StatsEquivalentPlanNodeWithLimit(plan.get().getId(), plan.get(), (LimitNode) limit.get());
         context.addPlan(node, new CanonicalPlan(result, strategy));
         return Optional.of(result);
     }
@@ -211,7 +215,7 @@ public class CanonicalPlanGenerator
         }
 
         PlanNode result = new LimitNode(Optional.empty(), planNodeidAllocator.getNextId(), source.get(), node.getCount(), node.getStep());
-        context.addPlan(node, new CanonicalPlan(result, strategy));
+        context.addLimitNodePlan(node, new CanonicalPlan(result, strategy));
         return Optional.of(result);
     }
 
@@ -282,7 +286,7 @@ public class CanonicalPlanGenerator
                 .collect(toCollection(LinkedHashSet::new));
         Set<RowExpression> newFilters = allFilters.build().stream()
                 .map(filter -> inlineAndCanonicalize(context.getExpressions(), filter))
-                .sorted(comparing(RowExpression::toString))
+                .sorted(comparing(this::writeValueAsString))
                 .collect(toCollection(LinkedHashSet::new));
         List<VariableReferenceExpression> outputVariables = node.getOutputVariables().stream()
                 .map(variable -> inlineAndCanonicalize(context.getExpressions(), variable))
@@ -369,7 +373,7 @@ public class CanonicalPlanGenerator
 
         List<RowExpressionReference> rowExpressionReferences = node.getOutputVariables().stream()
                 .map(variable -> new RowExpressionReference(inlineAndCanonicalize(context.getExpressions(), variable, strategy == REMOVE_SAFE_CONSTANTS), variable))
-                .sorted(comparing(rowExpressionReference -> rowExpressionReference.getRowExpression().toString()))
+                .sorted(comparing(rowExpressionReference -> writeValueAsString(rowExpressionReference.getRowExpression())))
                 .collect(toImmutableList());
 
         ImmutableMap.Builder<VariableReferenceExpression, RowExpression> assignments = ImmutableMap.builder();
@@ -405,7 +409,7 @@ public class CanonicalPlanGenerator
         //   4. Record mapping from original variable reference to the new one
         List<AggregationReference> aggregationReferences = node.getAggregations().entrySet().stream()
                 .map(entry -> new AggregationReference(getCanonicalAggregation(entry.getValue(), context.getExpressions()), entry.getKey()))
-                .sorted(comparing(aggregationReference -> aggregationReference.getAggregation().getCall().toString()))
+                .sorted(comparing(aggregationReference -> writeValueAsString(aggregationReference.getAggregation().getCall())))
                 .collect(toImmutableList());
         ImmutableMap.Builder<VariableReferenceExpression, Aggregation> aggregations = ImmutableMap.builder();
         for (AggregationReference aggregationReference : aggregationReferences) {
@@ -575,7 +579,7 @@ public class CanonicalPlanGenerator
 
         List<RowExpressionReference> rowExpressionReferences = node.getAssignments().entrySet().stream()
                 .map(entry -> new RowExpressionReference(inlineAndCanonicalize(context.getExpressions(), entry.getValue(), strategy == REMOVE_SAFE_CONSTANTS), entry.getKey()))
-                .sorted(comparing(rowExpressionReference -> rowExpressionReference.getRowExpression().toString()))
+                .sorted(comparing(rowExpressionReference -> writeValueAsString(rowExpressionReference.getRowExpression())))
                 .collect(toImmutableList());
         ImmutableMap.Builder<VariableReferenceExpression, RowExpression> assignments = ImmutableMap.builder();
         for (RowExpressionReference rowExpressionReference : rowExpressionReferences) {
@@ -721,6 +725,16 @@ public class CanonicalPlanGenerator
         return newVariable;
     }
 
+    private String writeValueAsString(RowExpression rowExpression)
+    {
+        try {
+            return objectMapper.writeValueAsString(rowExpression);
+        }
+        catch (JsonProcessingException e) {
+            throw new PrestoException(PLAN_SERIALIZATION_ERROR, "Cannot serialize plan to JSON", e);
+        }
+    }
+
     private static JoinNode.EquiJoinClause canonicalize(JoinNode.EquiJoinClause criteria, Context context)
     {
         VariableReferenceExpression left = inlineAndCanonicalize(context.getExpressions(), criteria.getLeft());
@@ -812,7 +826,59 @@ public class CanonicalPlanGenerator
             expressions.put(from, to);
         }
 
-        public void addPlan(PlanNode plan, CanonicalPlan canonicalPlan)
+        private void addLimitNodePlan(LimitNode plan, CanonicalPlan canonicalPlan)
+        {
+            if (!plan.getStatsEquivalentPlanNode().isPresent()) {
+                addPlanInternal(plan, canonicalPlan);
+                return;
+            }
+            // When limits are involved, we can only know canonicalized plans after topmost limit has been canonicalized.
+            // Once we are at topmost limit, we cache canonicalized plans for all sub-plans.
+            PlanNode statsEquivalentPlanNode = plan.getStatsEquivalentPlanNode().get();
+            StatsEquivalentPlanNodeWithLimit statsEquivalentPlanNodeWithLimit = (StatsEquivalentPlanNodeWithLimit) statsEquivalentPlanNode;
+            if (childrenCount(statsEquivalentPlanNodeWithLimit.getLimit()) != childrenCount(statsEquivalentPlanNodeWithLimit.getPlan())) {
+                addPlanInternal(plan, canonicalPlan);
+                return;
+            }
+            forTree(PlanNode::getSources)
+                    .depthFirstPreOrder(plan)
+                    .forEach(child -> {
+                        CanonicalPlan childCanonicalPlan = child == plan ? canonicalPlan : canonicalPlans.get(child);
+                        if (childCanonicalPlan == null || !child.getStatsEquivalentPlanNode().isPresent()) {
+                            return;
+                        }
+                        // Only save canonicalized plans for stats equivalent plan nodes.
+                        canonicalPlans.remove(child);
+                        inputTables.remove(child);
+                        addPlanInternal(
+                                child.getStatsEquivalentPlanNode().get(),
+                                new CanonicalPlan(
+                                        new StatsEquivalentPlanNodeWithLimit(childCanonicalPlan.getPlan().getId(), childCanonicalPlan.getPlan(), (LimitNode) canonicalPlan.getPlan()),
+                                        canonicalPlan.getStrategy()));
+                    });
+        }
+
+        private void addPlan(PlanNode plan, CanonicalPlan canonicalPlan)
+        {
+            if (!plan.getStatsEquivalentPlanNode().isPresent()) {
+                addPlanInternal(plan, canonicalPlan);
+                return;
+            }
+            PlanNode statsEquivalentPlanNode = plan.getStatsEquivalentPlanNode().get();
+            if (childrenCount(plan) == childrenCount(statsEquivalentPlanNode)) {
+                addPlanInternal(statsEquivalentPlanNode, canonicalPlan);
+            }
+            else {
+                addPlanInternal(plan, canonicalPlan);
+            }
+        }
+
+        private int childrenCount(PlanNode root)
+        {
+            return Iterables.size(forTree(PlanNode::getSources).depthFirstPreOrder(root));
+        }
+
+        private void addPlanInternal(PlanNode plan, CanonicalPlan canonicalPlan)
         {
             ImmutableList.Builder<TableScanNode> inputs = ImmutableList.builder();
             canonicalPlans.put(plan, canonicalPlan);

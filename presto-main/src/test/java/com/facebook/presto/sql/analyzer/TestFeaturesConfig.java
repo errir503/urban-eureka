@@ -19,6 +19,7 @@ import com.facebook.presto.operator.aggregation.arrayagg.ArrayAggGroupImplementa
 import com.facebook.presto.operator.aggregation.histogram.HistogramGroupImplementation;
 import com.facebook.presto.operator.aggregation.multimapagg.MultimapAggGroupImplementation;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationIfToFilterRewriteStrategy;
+import com.facebook.presto.sql.analyzer.FeaturesConfig.AnalyzerType;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.PartialAggregationStrategy;
@@ -35,6 +36,7 @@ import static com.facebook.airlift.configuration.testing.ConfigAssertions.assert
 import static com.facebook.airlift.configuration.testing.ConfigAssertions.assertRecordedDefaults;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartitioningMergingStrategy.LEGACY;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartitioningMergingStrategy.TOP_DOWN;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.AnalyzerType.NATIVE;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType.BROADCAST;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy.NONE;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.PartialMergePushdownStrategy.PUSH_THROUGH_LOW_MEMORY_OPERATORS;
@@ -194,6 +196,7 @@ public class TestFeaturesConfig
                 .setQueryOptimizationWithMaterializedViewEnabled(false)
                 .setVerboseRuntimeStatsEnabled(false)
                 .setAggregationIfToFilterRewriteStrategy(AggregationIfToFilterRewriteStrategy.DISABLED)
+                .setAnalyzerType(AnalyzerType.BUILTIN)
                 .setHashBasedDistinctLimitEnabled(false)
                 .setHashBasedDistinctLimitThreshold(10000)
                 .setStreamingForPartialAggregationEnabled(false)
@@ -208,7 +211,8 @@ public class TestFeaturesConfig
                 .setNativeExecutionEnabled(false)
                 .setNativeExecutionExecutablePath("./presto_server")
                 .setRandomizeOuterJoinNullKeyEnabled(false)
-                .setOptimizeConditionalAggregationEnabled(false));
+                .setOptimizeConditionalAggregationEnabled(false)
+                .setRemoveRedundantDistinctAggregationEnabled(true));
     }
 
     @Test
@@ -351,6 +355,7 @@ public class TestFeaturesConfig
                 .put("materialized-view-data-consistency-enabled", "false")
                 .put("consider-query-filters-for-materialized-view-partitions", "false")
                 .put("query-optimization-with-materialized-view-enabled", "true")
+                .put("analyzer-type", NATIVE.name())
                 .put("verbose-runtime-stats-enabled", "true")
                 .put("optimizer.aggregation-if-to-filter-rewrite-strategy", "filter_with_if")
                 .put("hash-based-distinct-limit-enabled", "true")
@@ -368,6 +373,7 @@ public class TestFeaturesConfig
                 .put("native-execution-executable-path", "/bin/echo")
                 .put("optimizer.randomize-outer-join-null-key", "true")
                 .put("optimizer.optimize-conditional-aggregation-enabled", "true")
+                .put("optimizer.remove-redundant-distinct-aggregation-enabled", "false")
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -510,6 +516,7 @@ public class TestFeaturesConfig
                 .setQueryOptimizationWithMaterializedViewEnabled(true)
                 .setVerboseRuntimeStatsEnabled(true)
                 .setAggregationIfToFilterRewriteStrategy(AggregationIfToFilterRewriteStrategy.FILTER_WITH_IF)
+                .setAnalyzerType(NATIVE)
                 .setHashBasedDistinctLimitEnabled(true)
                 .setHashBasedDistinctLimitThreshold(500)
                 .setStreamingForPartialAggregationEnabled(true)
@@ -524,7 +531,8 @@ public class TestFeaturesConfig
                 .setNativeExecutionEnabled(true)
                 .setNativeExecutionExecutablePath("/bin/echo")
                 .setRandomizeOuterJoinNullKeyEnabled(true)
-                .setOptimizeConditionalAggregationEnabled(true);
+                .setOptimizeConditionalAggregationEnabled(true)
+                .setRemoveRedundantDistinctAggregationEnabled(false);
         assertFullMapping(properties, expected);
     }
 

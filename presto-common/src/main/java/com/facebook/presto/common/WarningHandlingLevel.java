@@ -11,12 +11,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.execution.warnings;
+package com.facebook.presto.common;
 
-import com.facebook.presto.common.WarningHandlingLevel;
-import com.facebook.presto.spi.WarningCollector;
-
-public interface WarningCollectorFactory
+public enum WarningHandlingLevel
 {
-    WarningCollector create(WarningHandlingLevel warningHandlingLevel);
+    SUPPRESS,
+    NORMAL,
+    AS_ERROR
 }
