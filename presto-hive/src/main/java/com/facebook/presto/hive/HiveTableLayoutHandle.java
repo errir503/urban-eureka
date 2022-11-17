@@ -65,9 +65,11 @@ public class HiveTableLayoutHandle
     private final Optional<Set<HiveColumnHandle>> requestedColumns;
     private final boolean partialAggregationsPushedDown;
     private final boolean appendRowNumberEnabled;
+    private final boolean footerStatsUnreliable;
 
     // coordinator-only properties
     private final Optional<List<HivePartition>> partitions;
+    private final Optional<HiveTableHandle> hiveTableHandle;
 
     @JsonCreator
     public HiveTableLayoutHandle(
@@ -86,7 +88,8 @@ public class HiveTableLayoutHandle
             @JsonProperty("layoutString") String layoutString,
             @JsonProperty("requestedColumns") Optional<Set<HiveColumnHandle>> requestedColumns,
             @JsonProperty("partialAggregationsPushedDown") boolean partialAggregationsPushedDown,
-            @JsonProperty("appendRowNumber") boolean appendRowNumberEnabled)
+            @JsonProperty("appendRowNumber") boolean appendRowNumberEnabled,
+            @JsonProperty("footerStatsUnreliable") boolean footerStatsUnreliable)
     {
         this(
                 schemaTableName,
@@ -105,6 +108,8 @@ public class HiveTableLayoutHandle
                 requestedColumns,
                 partialAggregationsPushedDown,
                 appendRowNumberEnabled,
+                Optional.empty(),
+                footerStatsUnreliable,
                 Optional.empty());
     }
 
@@ -125,7 +130,9 @@ public class HiveTableLayoutHandle
             Optional<Set<HiveColumnHandle>> requestedColumns,
             boolean partialAggregationsPushedDown,
             boolean appendRowNumberEnabled,
-            Optional<List<HivePartition>> partitions)
+            Optional<List<HivePartition>> partitions,
+            boolean footerStatsUnreliable,
+            Optional<HiveTableHandle> hiveTableHandle)
     {
         this.schemaTableName = requireNonNull(schemaTableName, "table is null");
         this.tablePath = requireNonNull(tablePath, "tablePath is null");
@@ -144,6 +151,8 @@ public class HiveTableLayoutHandle
         this.partialAggregationsPushedDown = partialAggregationsPushedDown;
         this.appendRowNumberEnabled = appendRowNumberEnabled;
         this.partitions = requireNonNull(partitions, "partitions is null");
+        this.footerStatsUnreliable = footerStatsUnreliable;
+        this.hiveTableHandle = requireNonNull(hiveTableHandle, "hiveTableHandle is null");
     }
 
     @JsonProperty
@@ -185,6 +194,17 @@ public class HiveTableLayoutHandle
     public Optional<List<HivePartition>> getPartitions()
     {
         return partitions;
+    }
+
+    /**
+     * HiveTableHandle is dropped when HiveTableLayoutHandle is serialized.
+     *
+     * @return HiveTableHandle if available, {@code Optional.empty()} if dropped
+     */
+    @JsonIgnore
+    public Optional<HiveTableHandle> getHiveTableHandle()
+    {
+        return hiveTableHandle;
     }
 
     @JsonProperty
@@ -257,6 +277,12 @@ public class HiveTableLayoutHandle
     public boolean isAppendRowNumberEnabled()
     {
         return appendRowNumberEnabled;
+    }
+
+    @JsonProperty
+    public boolean isFooterStatsUnreliable()
+    {
+        return footerStatsUnreliable;
     }
 
     @Override
@@ -334,7 +360,14 @@ public class HiveTableLayoutHandle
 
     public Table getTable(SemiTransactionalHiveMetastore metastore, MetastoreContext metastoreContext)
     {
-        return metastore.getTable(metastoreContext, schemaTableName.getSchemaName(), schemaTableName.getTableName()).orElseThrow(() -> new TableNotFoundException(schemaTableName));
+        Optional<Table> table;
+        if (hiveTableHandle.isPresent()) {
+            table = metastore.getTable(metastoreContext, hiveTableHandle.get());
+        }
+        else {
+            table = metastore.getTable(metastoreContext, schemaTableName.getSchemaName(), schemaTableName.getTableName());
+        }
+        return table.orElseThrow(() -> new TableNotFoundException(schemaTableName));
     }
 
     public Builder builder()
@@ -356,7 +389,9 @@ public class HiveTableLayoutHandle
                 .setRequestedColumns(getRequestedColumns())
                 .setPartialAggregationsPushedDown(isPartialAggregationsPushedDown())
                 .setAppendRowNumberEnabled(isAppendRowNumberEnabled())
-                .setPartitions(getPartitions());
+                .setPartitions(getPartitions())
+                .setFooterStatsUnreliable(isFooterStatsUnreliable())
+                .setHiveTableHandle(getHiveTableHandle());
     }
 
     public static class Builder
@@ -377,8 +412,10 @@ public class HiveTableLayoutHandle
         private Optional<Set<HiveColumnHandle>> requestedColumns;
         private boolean partialAggregationsPushedDown;
         private boolean appendRowNumberEnabled;
+        private boolean footerStatsUnreliable;
 
         private Optional<List<HivePartition>> partitions;
+        private Optional<HiveTableHandle> hiveTableHandle = Optional.empty();
 
         public Builder setSchemaTableName(SchemaTableName schemaTableName)
         {
@@ -489,6 +526,24 @@ public class HiveTableLayoutHandle
             return this;
         }
 
+        public Builder setFooterStatsUnreliable(boolean footerStatsUnreliable)
+        {
+            this.footerStatsUnreliable = footerStatsUnreliable;
+            return this;
+        }
+        public Builder setHiveTableHandle(Optional<HiveTableHandle> hiveTableHandle)
+        {
+            this.hiveTableHandle = requireNonNull(hiveTableHandle, "hiveTableHandle is null");
+            return this;
+        }
+
+        public Builder setHiveTableHandle(HiveTableHandle hiveTableHandle)
+        {
+            requireNonNull(hiveTableHandle, "hiveTableHandle is null");
+            this.hiveTableHandle = Optional.of(hiveTableHandle);
+            return this;
+        }
+
         public HiveTableLayoutHandle build()
         {
             return new HiveTableLayoutHandle(
@@ -508,7 +563,9 @@ public class HiveTableLayoutHandle
                     requestedColumns,
                     partialAggregationsPushedDown,
                     appendRowNumberEnabled,
-                    partitions);
+                    partitions,
+                    footerStatsUnreliable,
+                    hiveTableHandle);
         }
     }
 }

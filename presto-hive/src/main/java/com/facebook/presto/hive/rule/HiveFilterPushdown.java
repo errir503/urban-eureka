@@ -269,7 +269,8 @@ public class HiveFilterPushdown
                 .map(HiveColumnHandle.class::cast)
                 .collect(toImmutableMap(HiveColumnHandle::getName, Functions.identity()));
 
-        SchemaTableName tableName = ((HiveTableHandle) tableHandle).getSchemaTableName();
+        HiveTableHandle hiveTableHandle = (HiveTableHandle) tableHandle;
+        SchemaTableName tableName = hiveTableHandle.getSchemaTableName();
 
         LogicalRowExpressions logicalRowExpressions = new LogicalRowExpressions(rowExpressionService.getDeterminismEvaluator(), functionResolution, functionMetadataManager);
         List<RowExpression> conjuncts = extractConjuncts(decomposedFilter.getRemainingExpression());
@@ -287,7 +288,8 @@ public class HiveFilterPushdown
         RowExpression remainingExpression = logicalRowExpressions.combineConjuncts(staticConjuncts.build());
         remainingExpression = removeNestedDynamicFilters(remainingExpression);
 
-        Table table = metastore.getTable(new MetastoreContext(session.getIdentity(), session.getQueryId(), session.getClientInfo(), session.getSource(), getMetastoreHeaders(session), isUserDefinedTypeEncodingEnabled(session), metastore.getColumnConverterProvider()), tableName.getSchemaName(), tableName.getTableName())
+        MetastoreContext context = new MetastoreContext(session.getIdentity(), session.getQueryId(), session.getClientInfo(), session.getSource(), getMetastoreHeaders(session), isUserDefinedTypeEncodingEnabled(session), metastore.getColumnConverterProvider());
+        Table table = metastore.getTable(context, hiveTableHandle)
                 .orElseThrow(() -> new TableNotFoundException(tableName));
         String layoutString = createTableLayoutString(
                 session,
@@ -322,6 +324,7 @@ public class HiveFilterPushdown
                                 .setRequestedColumns(requestedColumns)
                                 .setPartialAggregationsPushedDown(false)
                                 .setAppendRowNumberEnabled(appendRowNumbereEnabled)
+                                .setHiveTableHandle(hiveTableHandle)
                                 .build()),
                 dynamicFilterExpression);
     }
