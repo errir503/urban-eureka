@@ -24,10 +24,10 @@ import com.facebook.presto.execution.QueryManager;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorId;
-import com.facebook.presto.spi.ConnectorMaterializedViewDefinition;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.Constraint;
+import com.facebook.presto.spi.MaterializedViewDefinition;
 import com.facebook.presto.spi.MaterializedViewStatus;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.QueryId;
@@ -46,6 +46,8 @@ import com.facebook.presto.spi.security.RoleGrant;
 import com.facebook.presto.spi.statistics.ComputedStatistics;
 import com.facebook.presto.spi.statistics.TableStatistics;
 import com.facebook.presto.spi.statistics.TableStatisticsMetadata;
+import com.facebook.presto.sql.analyzer.MetadataResolver;
+import com.facebook.presto.sql.analyzer.ViewDefinition;
 import com.facebook.presto.sql.planner.PartitioningHandle;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.slice.Slice;
@@ -66,10 +68,6 @@ public interface Metadata
     Type getType(TypeSignature signature);
 
     void registerBuiltInFunctions(List<? extends SqlFunction> functions);
-
-    boolean schemaExists(Session session, CatalogSchemaName schema);
-
-    boolean catalogExists(Session session, String catalogName);
 
     List<String> listSchemaNames(Session session, String catalogName);
 
@@ -349,19 +347,6 @@ public interface Metadata
     Map<QualifiedObjectName, ViewDefinition> getViews(Session session, QualifiedTablePrefix prefix);
 
     /**
-     * Returns the view definition for the specified view name.
-     */
-    Optional<ViewDefinition> getView(Session session, QualifiedObjectName viewName);
-
-    /**
-     * Is the specified table a view.
-     */
-    default boolean isView(Session session, QualifiedObjectName viewName)
-    {
-        return getView(session, viewName).isPresent();
-    }
-
-    /**
      * Creates the specified view with the specified view definition.
      */
     void createView(Session session, String catalogName, ConnectorTableMetadata viewMetadata, String viewData, boolean replace);
@@ -372,22 +357,9 @@ public interface Metadata
     void dropView(Session session, QualifiedObjectName viewName);
 
     /**
-     * Returns the materialized view definition for the specified materialized view name.
-     */
-    Optional<ConnectorMaterializedViewDefinition> getMaterializedView(Session session, QualifiedObjectName viewName);
-
-    /**
-     * Is the specified table a materialized view.
-     */
-    default boolean isMaterializedView(Session session, QualifiedObjectName viewName)
-    {
-        return getMaterializedView(session, viewName).isPresent();
-    }
-
-    /**
      * Creates the specified materialized view with the specified view definition.
      */
-    void createMaterializedView(Session session, String catalogName, ConnectorTableMetadata viewMetadata, ConnectorMaterializedViewDefinition viewDefinition, boolean ignoreExisting);
+    void createMaterializedView(Session session, String catalogName, ConnectorTableMetadata viewMetadata, MaterializedViewDefinition viewDefinition, boolean ignoreExisting);
 
     /**
      * Drops the specified materialized view.
@@ -509,6 +481,8 @@ public interface Metadata
     ColumnPropertyManager getColumnPropertyManager();
 
     AnalyzePropertyManager getAnalyzePropertyManager();
+
+    MetadataResolver getMetadataResolver(Session session);
 
     Set<ConnectorCapabilities> getConnectorCapabilities(Session session, ConnectorId catalogName);
 

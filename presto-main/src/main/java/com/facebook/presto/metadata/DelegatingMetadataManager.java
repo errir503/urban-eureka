@@ -24,9 +24,9 @@ import com.facebook.presto.execution.QueryManager;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorId;
-import com.facebook.presto.spi.ConnectorMaterializedViewDefinition;
 import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.Constraint;
+import com.facebook.presto.spi.MaterializedViewDefinition;
 import com.facebook.presto.spi.MaterializedViewStatus;
 import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.spi.SystemTable;
@@ -41,6 +41,7 @@ import com.facebook.presto.spi.security.RoleGrant;
 import com.facebook.presto.spi.statistics.ComputedStatistics;
 import com.facebook.presto.spi.statistics.TableStatistics;
 import com.facebook.presto.spi.statistics.TableStatisticsMetadata;
+import com.facebook.presto.sql.analyzer.ViewDefinition;
 import com.facebook.presto.sql.planner.PartitioningHandle;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.slice.Slice;
@@ -83,18 +84,6 @@ public abstract class DelegatingMetadataManager
     public void registerBuiltInFunctions(List<? extends SqlFunction> functionInfos)
     {
         delegate.registerBuiltInFunctions(functionInfos);
-    }
-
-    @Override
-    public boolean schemaExists(Session session, CatalogSchemaName schema)
-    {
-        return delegate.schemaExists(session, schema);
-    }
-
-    @Override
-    public boolean catalogExists(Session session, String catalogName)
-    {
-        return delegate.catalogExists(session, catalogName);
     }
 
     @Override
@@ -424,12 +413,6 @@ public abstract class DelegatingMetadataManager
     }
 
     @Override
-    public Optional<ViewDefinition> getView(Session session, QualifiedObjectName viewName)
-    {
-        return delegate.getView(session, viewName);
-    }
-
-    @Override
     public void createView(Session session, String catalogName, ConnectorTableMetadata viewMetadata, String viewData, boolean replace)
     {
         delegate.createView(session, catalogName, viewMetadata, viewData, replace);
@@ -442,17 +425,11 @@ public abstract class DelegatingMetadataManager
     }
 
     @Override
-    public Optional<ConnectorMaterializedViewDefinition> getMaterializedView(Session session, QualifiedObjectName viewName)
-    {
-        return delegate.getMaterializedView(session, viewName);
-    }
-
-    @Override
     public void createMaterializedView(
             Session session,
             String catalogName,
             ConnectorTableMetadata viewMetadata,
-            ConnectorMaterializedViewDefinition viewDefinition,
+            MaterializedViewDefinition viewDefinition,
             boolean ignoreExisting)
     {
         delegate.createMaterializedView(session, catalogName, viewMetadata, viewDefinition, ignoreExisting);

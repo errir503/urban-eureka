@@ -19,6 +19,7 @@ import com.facebook.airlift.log.Logging;
 import com.facebook.presto.Session;
 import com.facebook.presto.common.QualifiedObjectName;
 import com.facebook.presto.connector.ConnectorManager;
+import com.facebook.presto.cost.HistoryBasedPlanStatisticsManager;
 import com.facebook.presto.cost.StatsCalculator;
 import com.facebook.presto.functionNamespace.SqlInvokedFunctionNamespaceManagerConfig;
 import com.facebook.presto.functionNamespace.execution.NoopSqlFunctionExecutor;
@@ -142,10 +143,11 @@ public class PrestoSparkQueryRunner
     private final PluginManager pluginManager;
     private final ConnectorManager connectorManager;
     private final Set<PrestoSparkServiceWaitTimeMetrics> waitTimeMetrics;
+    private final HistoryBasedPlanStatisticsManager historyBasedPlanStatisticsManager;
 
     private final LifeCycleManager lifeCycleManager;
 
-    private final SparkContext sparkContext;
+    private SparkContext sparkContext;
     private final PrestoSparkService prestoSparkService;
 
     private final TestingAccessControlManager testingAccessControlManager;
@@ -273,6 +275,7 @@ public class PrestoSparkQueryRunner
         pluginManager = injector.getInstance(PluginManager.class);
         connectorManager = injector.getInstance(ConnectorManager.class);
         waitTimeMetrics = injector.getInstance(new Key<Set<PrestoSparkServiceWaitTimeMetrics>>() {});
+        historyBasedPlanStatisticsManager = injector.getInstance(HistoryBasedPlanStatisticsManager.class);
 
         lifeCycleManager = injector.getInstance(LifeCycleManager.class);
 
@@ -414,6 +417,11 @@ public class PrestoSparkQueryRunner
     public TestingAccessControlManager getAccessControl()
     {
         return testingAccessControlManager;
+    }
+
+    public HistoryBasedPlanStatisticsManager getHistoryBasedPlanStatisticsManager()
+    {
+        return historyBasedPlanStatisticsManager;
     }
 
     @Override
@@ -566,6 +574,22 @@ public class PrestoSparkQueryRunner
         return waitTimeMetrics;
     }
 
+    public SparkContext getSparkContext()
+    {
+        return sparkContext;
+    }
+
+    public void resetSparkContext()
+    {
+        resetSparkContext(ImmutableMap.of());
+    }
+
+    public void resetSparkContext(Map<String, String> additionalSparkConfigs)
+    {
+        sparkContextHolder.release(sparkContext, true);
+        sparkContext = sparkContextHolder.get(additionalSparkConfigs);
+    }
+
     @Override
     public void close()
     {
@@ -619,6 +643,11 @@ public class PrestoSparkQueryRunner
 
         public SparkContext get()
         {
+            return get(ImmutableMap.of());
+        }
+
+        public SparkContext get(Map<String, String> additionalSparkConfigs)
+        {
             synchronized (SparkContextHolder.class) {
                 if (sparkContext == null) {
                     SparkConf sparkConfiguration = new SparkConf()
@@ -627,6 +656,7 @@ public class PrestoSparkQueryRunner
                             .set("spark.driver.host", "localhost")
                             .set(SPARK_EXECUTOR_CORES_PROPERTY, "4")
                             .set(SPARK_TASK_CPUS_PROPERTY, "4");
+                    additionalSparkConfigs.forEach(sparkConfiguration::set);
                     PrestoSparkConfInitializer.initialize(sparkConfiguration);
                     sparkContext = new SparkContext(sparkConfiguration);
                 }
@@ -637,8 +667,13 @@ public class PrestoSparkQueryRunner
 
         public void release(SparkContext sparkContext)
         {
+            release(sparkContext, false);
+        }
+
+        public void release(SparkContext sparkContext, boolean forceRelease)
+        {
             synchronized (SparkContextHolder.class) {
-                checkState(SparkContextHolder.sparkContext == sparkContext, "unexpected spark context");
+                checkState(forceRelease || SparkContextHolder.sparkContext == sparkContext, "unexpected spark context");
                 referenceCount--;
                 if (referenceCount == 0) {
                     sparkContext.cancelAllJobs();
