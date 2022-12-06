@@ -17,6 +17,7 @@ import com.facebook.drift.client.DriftClient;
 import com.facebook.presto.Session;
 import com.facebook.presto.common.CatalogSchemaName;
 import com.facebook.presto.common.QualifiedObjectName;
+import com.facebook.presto.common.type.Type;
 import com.facebook.presto.metadata.CatalogMetadata;
 import com.facebook.presto.metadata.DelegatingMetadataManager;
 import com.facebook.presto.metadata.MetadataManager;
@@ -24,9 +25,9 @@ import com.facebook.presto.metadata.QualifiedTablePrefix;
 import com.facebook.presto.metadata.TableMetadata;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.MaterializedViewDefinition;
-import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.TableHandle;
 import com.facebook.presto.sql.analyzer.MetadataResolver;
+import com.facebook.presto.sql.analyzer.SemanticException;
 import com.facebook.presto.sql.analyzer.ViewDefinition;
 import com.facebook.presto.transaction.TransactionManager;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -41,7 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static com.facebook.presto.spi.StandardErrorCode.MISSING_TABLE;
+import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_TABLE;
 import static java.util.Objects.requireNonNull;
 
 // TODO : Use thrift to serialize metadata objects instead of json serde on catalog server in the future
@@ -182,7 +183,7 @@ public class RemoteMetadataManager
             {
                 Optional<TableHandle> tableHandle = getTableHandle(session, tableName);
                 if (!tableHandle.isPresent()) {
-                    throw new PrestoException(MISSING_TABLE, "Table does not exist: " + tableName.toString());
+                    throw new SemanticException(MISSING_TABLE, "Table does not exist: " + tableName.toString());
                 }
                 TableMetadata tableMetadata = getTableMetadata(session, tableHandle.get());
                 return Optional.of(tableMetadata.getColumns());
@@ -210,6 +211,12 @@ public class RemoteMetadataManager
                 return materializedViewDefinitionJson.isEmpty()
                         ? Optional.empty()
                         : Optional.of(readValue(materializedViewDefinitionJson, new TypeReference<MaterializedViewDefinition>() {}));
+            }
+
+            @Override
+            public List<Type> getTypes()
+            {
+                return getFunctionAndTypeManager().getTypes();
             }
         };
     }

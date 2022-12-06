@@ -66,6 +66,7 @@ import com.facebook.presto.spi.statistics.TableStatistics;
 import com.facebook.presto.spi.statistics.TableStatisticsMetadata;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.sql.analyzer.MetadataResolver;
+import com.facebook.presto.sql.analyzer.SemanticException;
 import com.facebook.presto.sql.analyzer.TypeSignatureProvider;
 import com.facebook.presto.sql.analyzer.ViewDefinition;
 import com.facebook.presto.sql.planner.PartitioningHandle;
@@ -118,11 +119,11 @@ import static com.facebook.presto.metadata.MetadataUtil.toSchemaTableName;
 import static com.facebook.presto.metadata.TableLayout.fromConnectorLayout;
 import static com.facebook.presto.spi.Constraint.alwaysTrue;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_VIEW;
-import static com.facebook.presto.spi.StandardErrorCode.MISSING_TABLE;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.StandardErrorCode.SYNTAX_ERROR;
 import static com.facebook.presto.spi.TableLayoutFilterCoverage.NOT_APPLICABLE;
+import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_TABLE;
 import static com.facebook.presto.sql.analyzer.TypeSignatureProvider.fromTypes;
 import static com.facebook.presto.sql.analyzer.ViewDefinition.ViewColumn;
 import static com.facebook.presto.transaction.InMemoryTransactionManager.createTestTransactionManager;
@@ -1337,7 +1338,7 @@ public class MetadataManager
             {
                 Optional<TableHandle> tableHandle = getOptionalTableHandle(session, transactionManager, tableName);
                 if (!tableHandle.isPresent()) {
-                    throw new PrestoException(MISSING_TABLE, "Table does not exist: " + tableName.toString());
+                    throw new SemanticException(MISSING_TABLE, "Table does not exist: " + tableName.toString());
                 }
                 TableMetadata tableMetadata = getTableMetadata(session, tableHandle.get());
                 return Optional.of(tableMetadata.getColumns());
@@ -1379,6 +1380,12 @@ public class MetadataManager
                     return metadata.getMaterializedView(session.toConnectorSession(connectorId), toSchemaTableName(viewName));
                 }
                 return Optional.empty();
+            }
+
+            @Override
+            public List<Type> getTypes()
+            {
+                return functionAndTypeManager.getTypes();
             }
         };
     }
