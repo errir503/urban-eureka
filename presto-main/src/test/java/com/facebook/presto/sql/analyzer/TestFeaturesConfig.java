@@ -33,7 +33,6 @@ import java.util.Map;
 
 import static com.facebook.airlift.configuration.testing.ConfigAssertions.assertFullMapping;
 import static com.facebook.airlift.configuration.testing.ConfigAssertions.assertRecordedDefaults;
-import static com.facebook.presto.sql.analyzer.AnalyzerType.NATIVE;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartitioningMergingStrategy.LEGACY;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartitioningMergingStrategy.TOP_DOWN;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType.BROADCAST;
@@ -106,7 +105,9 @@ public class TestFeaturesConfig
                 .setOrderByAggregationSpillEnabled(true)
                 .setWindowSpillEnabled(true)
                 .setOrderBySpillEnabled(true)
+                .setTopNSpillEnabled(true)
                 .setAggregationOperatorUnspillMemoryLimit(DataSize.valueOf("4MB"))
+                .setTopNOperatorUnspillMemoryLimit(DataSize.valueOf("4MB"))
                 .setSpillerSpillPaths("")
                 .setSpillerThreads(4)
                 .setSpillMaxUsedSpaceThreshold(0.9)
@@ -196,7 +197,7 @@ public class TestFeaturesConfig
                 .setQueryOptimizationWithMaterializedViewEnabled(false)
                 .setVerboseRuntimeStatsEnabled(false)
                 .setAggregationIfToFilterRewriteStrategy(AggregationIfToFilterRewriteStrategy.DISABLED)
-                .setAnalyzerType(AnalyzerType.BUILTIN)
+                .setAnalyzerType("BUILTIN")
                 .setStreamingForPartialAggregationEnabled(false)
                 .setMaxStageCountForEagerScheduling(25)
                 .setHyperloglogStandardErrorWarningThreshold(0.004)
@@ -287,7 +288,9 @@ public class TestFeaturesConfig
                 .put("experimental.order-by-aggregation-spill-enabled", "false")
                 .put("experimental.window-spill-enabled", "false")
                 .put("experimental.order-by-spill-enabled", "false")
+                .put("experimental.topn-spill-enabled", "false")
                 .put("experimental.aggregation-operator-unspill-memory-limit", "100MB")
+                .put("experimental.topn-operator-unspill-memory-limit", "100MB")
                 .put("experimental.spiller-spill-path", "/tmp/custom/spill/path1,/tmp/custom/spill/path2")
                 .put("experimental.spiller-threads", "42")
                 .put("experimental.spiller-max-used-space-threshold", "0.8")
@@ -356,7 +359,7 @@ public class TestFeaturesConfig
                 .put("materialized-view-data-consistency-enabled", "false")
                 .put("consider-query-filters-for-materialized-view-partitions", "false")
                 .put("query-optimization-with-materialized-view-enabled", "true")
-                .put("analyzer-type", NATIVE.name())
+                .put("analyzer-type", "CRUX")
                 .put("verbose-runtime-stats-enabled", "true")
                 .put("optimizer.aggregation-if-to-filter-rewrite-strategy", "filter_with_if")
                 .put("streaming-for-partial-aggregation-enabled", "true")
@@ -441,7 +444,9 @@ public class TestFeaturesConfig
                 .setOrderByAggregationSpillEnabled(false)
                 .setWindowSpillEnabled(false)
                 .setOrderBySpillEnabled(false)
+                .setTopNSpillEnabled(false)
                 .setAggregationOperatorUnspillMemoryLimit(DataSize.valueOf("100MB"))
+                .setTopNOperatorUnspillMemoryLimit(DataSize.valueOf("100MB"))
                 .setSpillerSpillPaths("/tmp/custom/spill/path1,/tmp/custom/spill/path2")
                 .setSpillerThreads(42)
                 .setSpillMaxUsedSpaceThreshold(0.8)
@@ -518,7 +523,7 @@ public class TestFeaturesConfig
                 .setQueryOptimizationWithMaterializedViewEnabled(true)
                 .setVerboseRuntimeStatsEnabled(true)
                 .setAggregationIfToFilterRewriteStrategy(AggregationIfToFilterRewriteStrategy.FILTER_WITH_IF)
-                .setAnalyzerType(NATIVE)
+                .setAnalyzerType("CRUX")
                 .setStreamingForPartialAggregationEnabled(true)
                 .setMaxStageCountForEagerScheduling(123)
                 .setHyperloglogStandardErrorWarningThreshold(0.02)

@@ -107,17 +107,22 @@ import com.facebook.presto.server.TaskUpdateRequest;
 import com.facebook.presto.server.remotetask.RemoteTaskStats;
 import com.facebook.presto.server.security.ServerSecurityModule;
 import com.facebook.presto.spark.classloader_interface.SparkProcessType;
+import com.facebook.presto.spark.execution.BatchTaskUpdateRequest;
 import com.facebook.presto.spark.execution.ForNativeExecutionTask;
 import com.facebook.presto.spark.execution.NativeExecutionProcessFactory;
 import com.facebook.presto.spark.execution.NativeExecutionTaskFactory;
 import com.facebook.presto.spark.execution.PrestoSparkBroadcastTableCacheManager;
 import com.facebook.presto.spark.execution.PrestoSparkExecutionExceptionFactory;
+import com.facebook.presto.spark.execution.PrestoSparkLocalShuffleReadInfo;
+import com.facebook.presto.spark.execution.PrestoSparkLocalShuffleWriteInfo;
 import com.facebook.presto.spark.execution.PrestoSparkTaskExecutorFactory;
 import com.facebook.presto.spark.execution.property.NativeExecutionConnectorConfig;
 import com.facebook.presto.spark.execution.property.NativeExecutionNodeConfig;
 import com.facebook.presto.spark.execution.property.NativeExecutionSystemConfig;
 import com.facebook.presto.spark.execution.property.PrestoSparkWorkerProperty;
 import com.facebook.presto.spark.execution.property.WorkerProperty;
+import com.facebook.presto.spark.execution.shuffle.PrestoSparkLocalShuffleInfoTranslator;
+import com.facebook.presto.spark.execution.shuffle.PrestoSparkShuffleInfoTranslator;
 import com.facebook.presto.spark.node.PrestoSparkInternalNodeManager;
 import com.facebook.presto.spark.node.PrestoSparkNodePartitioningManager;
 import com.facebook.presto.spark.node.PrestoSparkQueryManager;
@@ -125,6 +130,7 @@ import com.facebook.presto.spark.node.PrestoSparkTaskManager;
 import com.facebook.presto.spark.planner.PrestoSparkPlanFragmenter;
 import com.facebook.presto.spark.planner.PrestoSparkQueryPlanner;
 import com.facebook.presto.spark.planner.PrestoSparkRddFactory;
+import com.facebook.presto.spark.planner.optimizers.AdaptivePlanOptimizers;
 import com.facebook.presto.spi.ConnectorMetadataUpdateHandle;
 import com.facebook.presto.spi.ConnectorTypeSerde;
 import com.facebook.presto.spi.PageIndexerFactory;
@@ -152,6 +158,8 @@ import com.facebook.presto.split.SplitManager;
 import com.facebook.presto.sql.Serialization.VariableReferenceExpressionDeserializer;
 import com.facebook.presto.sql.Serialization.VariableReferenceExpressionSerializer;
 import com.facebook.presto.sql.SqlEnvironmentConfig;
+import com.facebook.presto.sql.analyzer.AnalyzerProviderManager;
+import com.facebook.presto.sql.analyzer.BuiltInAnalyzerProvider;
 import com.facebook.presto.sql.analyzer.BuiltInQueryPreparer;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.sql.analyzer.QueryExplainer;
@@ -273,6 +281,9 @@ public class PrestoSparkModule
         jsonCodecBinder(binder).bindListJsonCodec(TaskMemoryReservationSummary.class);
         jsonCodecBinder(binder).bindJsonCodec(TaskUpdateRequest.class);
         jsonCodecBinder(binder).bindJsonCodec(ServerInfo.class);
+        jsonCodecBinder(binder).bindJsonCodec(PrestoSparkLocalShuffleReadInfo.class);
+        jsonCodecBinder(binder).bindJsonCodec(PrestoSparkLocalShuffleWriteInfo.class);
+        jsonCodecBinder(binder).bindJsonCodec(BatchTaskUpdateRequest.class);
 
         // smile codecs
         smileCodecBinder(binder).bindSmileCodec(TaskSource.class);
@@ -404,9 +415,15 @@ public class PrestoSparkModule
         binder.bind(SqlParser.class).in(Scopes.SINGLETON);
         binder.bind(SqlParserOptions.class).toInstance(sqlParserOptions);
 
+        // analyzer
+        binder.bind(BuiltInQueryPreparer.class).in(Scopes.SINGLETON);
+        binder.bind(BuiltInAnalyzerProvider.class).in(Scopes.SINGLETON);
+        binder.bind(AnalyzerProviderManager.class).in(Scopes.SINGLETON);
+
         // planner
         binder.bind(PlanFragmenter.class).in(Scopes.SINGLETON);
         binder.bind(PlanOptimizers.class).in(Scopes.SINGLETON);
+        binder.bind(AdaptivePlanOptimizers.class).in(Scopes.SINGLETON);
         binder.bind(ConnectorPlanOptimizerManager.class).in(Scopes.SINGLETON);
         binder.bind(LocalExecutionPlanner.class).in(Scopes.SINGLETON);
         configBinder(binder).bindConfig(FileFragmentResultCacheConfig.class);
@@ -490,6 +507,8 @@ public class PrestoSparkModule
         binder.bind(NativeExecutionProcessFactory.class).in(Scopes.SINGLETON);
         binder.bind(PrestoSparkWorkerProperty.class).in(Scopes.SINGLETON);
         newOptionalBinder(binder, new TypeLiteral<WorkerProperty<?, ?, ?>>() {}).setDefault().to(PrestoSparkWorkerProperty.class).in(Scopes.SINGLETON);
+        binder.bind(PrestoSparkLocalShuffleInfoTranslator.class).in(Scopes.SINGLETON);
+        newOptionalBinder(binder, new TypeLiteral<PrestoSparkShuffleInfoTranslator>() {}).setDefault().to(PrestoSparkLocalShuffleInfoTranslator.class).in(Scopes.SINGLETON);
         binder.bind(NativeExecutionTaskFactory.class).in(Scopes.SINGLETON);
         httpClientBinder(binder).bindHttpClient("nativeExecution", ForNativeExecutionTask.class)
                 .withConfigDefaults(config -> {

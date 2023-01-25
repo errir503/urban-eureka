@@ -10,7 +10,7 @@
 
     <groupId>com.facebook.presto</groupId>
     <artifactId>presto-root</artifactId>
-    <version>0.279-SNAPSHOT</version>
+    <version>0.280-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>presto-root</name>
@@ -95,7 +95,6 @@
         <module>presto-atop</module>
         <module>presto-spi</module>
         <module>presto-analyzer</module>
-        <module>presto-crux</module>
         <module>presto-cache</module>
         <module>presto-jmx</module>
         <module>presto-record-decoder</module>
