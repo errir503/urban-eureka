@@ -272,6 +272,16 @@ public class TestCanonicalPlanHashes
     }
 
     @Test
+    public void testRowNumber()
+            throws Exception
+    {
+        String query1 = "SELECT nationkey, ROW_NUMBER() OVER (PARTITION BY regionkey) from nation";
+        String query2 = "SELECT nationkey, ROW_NUMBER() OVER (PARTITION BY name) from nation";
+        assertSamePlanHash(query1, query1, CONNECTOR);
+        assertDifferentPlanHash(query1, query2, CONNECTOR);
+    }
+
+    @Test
     public void testLimit()
             throws Exception
     {
@@ -279,6 +289,35 @@ public class TestCanonicalPlanHashes
         assertDifferentPlanHash("SELECT * from nation LIMIT 1000", "SELECT * from nation", CONNECTOR);
         assertDifferentPlanHash("SELECT * from nation LIMIT 1000", "SELECT * from nation LIMIT 10000", CONNECTOR);
         assertDifferentPlanHash("SELECT * from nation LIMIT 1000", "SELECT * from nation LIMIT 10000", REMOVE_SAFE_CONSTANTS);
+    }
+
+    @Test
+    public void testTopN()
+            throws Exception
+    {
+        String query = "SELECT orderkey FROM orders GROUP BY 1 ORDER BY 1 DESC LIMIT 1";
+        assertSamePlanHash(query, query, CONNECTOR);
+        assertDifferentPlanHash(query, "SELECT orderkey FROM orders GROUP BY 1 ORDER BY 1 DESC LIMIT 2", CONNECTOR);
+    }
+
+    @Test
+    public void testTopNRowNumber()
+            throws Exception
+    {
+        String query1 = "SELECT orderstatus FROM (SELECT orderstatus, row_number() OVER (PARTITION BY orderstatus ORDER BY custkey) n FROM orders) WHERE n = 1";
+        String query2 = "SELECT orderstatus FROM (SELECT orderstatus, row_number() OVER (PARTITION BY orderstatus ORDER BY custkey) n FROM orders) WHERE n <= 2";
+        assertSamePlanHash(query1, query1, CONNECTOR);
+        assertDifferentPlanHash(query1, query2, CONNECTOR);
+    }
+
+    @Test
+    public void testDistinctLimit()
+            throws Exception
+    {
+        String query1 = "SELECT distinct regionkey from nation limit 2";
+        String query2 = "SELECT distinct regionkey from nation limit 3";
+        assertSamePlanHash(query1, query1, CONNECTOR);
+        assertDifferentPlanHash(query1, query2, CONNECTOR);
     }
 
     @Test

@@ -31,6 +31,7 @@ import com.facebook.presto.spi.MaterializedViewStatus;
 import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.spi.SystemTable;
 import com.facebook.presto.spi.TableHandle;
+import com.facebook.presto.spi.TableMetadata;
 import com.facebook.presto.spi.connector.ConnectorCapabilities;
 import com.facebook.presto.spi.connector.ConnectorOutputMetadata;
 import com.facebook.presto.spi.function.SqlFunction;
@@ -90,12 +91,6 @@ public abstract class DelegatingMetadataManager
     public List<String> listSchemaNames(Session session, String catalogName)
     {
         return delegate.listSchemaNames(session, catalogName);
-    }
-
-    @Override
-    public Optional<TableHandle> getTableHandle(Session session, QualifiedObjectName tableName)
-    {
-        return delegate.getTableHandle(session, tableName);
     }
 
     @Override

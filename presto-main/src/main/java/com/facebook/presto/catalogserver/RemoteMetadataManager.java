@@ -22,10 +22,10 @@ import com.facebook.presto.metadata.CatalogMetadata;
 import com.facebook.presto.metadata.DelegatingMetadataManager;
 import com.facebook.presto.metadata.MetadataManager;
 import com.facebook.presto.metadata.QualifiedTablePrefix;
-import com.facebook.presto.metadata.TableMetadata;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.MaterializedViewDefinition;
 import com.facebook.presto.spi.TableHandle;
+import com.facebook.presto.spi.TableMetadata;
 import com.facebook.presto.sql.analyzer.MetadataResolver;
 import com.facebook.presto.sql.analyzer.SemanticException;
 import com.facebook.presto.sql.analyzer.ViewDefinition;
@@ -79,8 +79,7 @@ public class RemoteMetadataManager
                 : readValue(schemaNamesJson, new TypeReference<List<String>>() {});
     }
 
-    @Override
-    public Optional<TableHandle> getTableHandle(Session session, QualifiedObjectName table)
+    private Optional<TableHandle> getOptionalTableHandle(Session session, QualifiedObjectName table)
     {
         String tableHandleJson = catalogServerClient.get().getTableHandle(
                 transactionManager.getTransactionInfo(session.getRequiredTransactionId()),
@@ -175,13 +174,19 @@ public class RemoteMetadataManager
             @Override
             public boolean tableExists(QualifiedObjectName tableName)
             {
-                return getTableHandle(session, tableName).isPresent();
+                return getTableHandle(tableName).isPresent();
+            }
+
+            @Override
+            public Optional<TableHandle> getTableHandle(QualifiedObjectName tableName)
+            {
+                return getOptionalTableHandle(session, tableName);
             }
 
             @Override
             public Optional<List<ColumnMetadata>> getColumns(QualifiedObjectName tableName)
             {
-                Optional<TableHandle> tableHandle = getTableHandle(session, tableName);
+                Optional<TableHandle> tableHandle = getTableHandle(tableName);
                 if (!tableHandle.isPresent()) {
                     throw new SemanticException(MISSING_TABLE, "Table does not exist: " + tableName.toString());
                 }

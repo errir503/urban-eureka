@@ -50,6 +50,7 @@ import com.facebook.presto.spi.SchemaTablePrefix;
 import com.facebook.presto.spi.SystemTable;
 import com.facebook.presto.spi.TableHandle;
 import com.facebook.presto.spi.TableLayoutFilterCoverage;
+import com.facebook.presto.spi.TableMetadata;
 import com.facebook.presto.spi.connector.ConnectorCapabilities;
 import com.facebook.presto.spi.connector.ConnectorMetadata;
 import com.facebook.presto.spi.connector.ConnectorOutputMetadata;
@@ -302,12 +303,6 @@ public class MetadataManager
             }
         }
         return ImmutableList.copyOf(schemaNames.build());
-    }
-
-    @Override
-    public Optional<TableHandle> getTableHandle(Session session, QualifiedObjectName table)
-    {
-        return getOptionalTableHandle(session, transactionManager, table);
     }
 
     @Override
@@ -1018,7 +1013,7 @@ public class MetadataManager
     @Override
     public MaterializedViewStatus getMaterializedViewStatus(Session session, QualifiedObjectName materializedViewName, TupleDomain<String> baseQueryDomain)
     {
-        Optional<TableHandle> materializedViewHandle = getTableHandle(session, materializedViewName);
+        Optional<TableHandle> materializedViewHandle = getOptionalTableHandle(session, transactionManager, materializedViewName);
 
         ConnectorId connectorId = materializedViewHandle.get().getConnectorId();
         ConnectorMetadata metadata = getMetadata(session, connectorId);
@@ -1331,6 +1326,12 @@ public class MetadataManager
             public boolean tableExists(QualifiedObjectName tableName)
             {
                 return getOptionalTableHandle(session, transactionManager, tableName).isPresent();
+            }
+
+            @Override
+            public Optional<TableHandle> getTableHandle(QualifiedObjectName tableName)
+            {
+                return getOptionalTableHandle(session, transactionManager, tableName);
             }
 
             @Override

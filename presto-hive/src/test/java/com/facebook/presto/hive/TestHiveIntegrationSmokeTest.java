@@ -23,13 +23,13 @@ import com.facebook.presto.hive.HiveClientConfig.InsertExistingPartitionsBehavio
 import com.facebook.presto.metadata.InsertTableHandle;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.TableLayout;
-import com.facebook.presto.metadata.TableMetadata;
 import com.facebook.presto.spi.CatalogSchemaTableName;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorId;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Constraint;
 import com.facebook.presto.spi.TableHandle;
+import com.facebook.presto.spi.TableMetadata;
 import com.facebook.presto.spi.plan.MarkDistinctNode;
 import com.facebook.presto.spi.security.Identity;
 import com.facebook.presto.spi.security.SelectedRole;
@@ -2065,7 +2065,7 @@ public class TestHiveIntegrationSmokeTest
         return transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getAccessControl())
                 .readOnly()
                 .execute(session, transactionSession -> {
-                    Optional<TableHandle> tableHandle = metadata.getTableHandle(transactionSession, new QualifiedObjectName(catalog, schema, tableName));
+                    Optional<TableHandle> tableHandle = metadata.getMetadataResolver(transactionSession).getTableHandle(new QualifiedObjectName(catalog, schema, tableName));
                     assertTrue(tableHandle.isPresent());
                     return metadata.getTableMetadata(transactionSession, tableHandle.get());
                 });
@@ -2079,7 +2079,7 @@ public class TestHiveIntegrationSmokeTest
         return transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getAccessControl())
                 .readOnly()
                 .execute(session, transactionSession -> {
-                    Optional<TableHandle> tableHandle = metadata.getTableHandle(transactionSession, new QualifiedObjectName(catalog, TPCH_SCHEMA, tableName));
+                    Optional<TableHandle> tableHandle = metadata.getMetadataResolver(transactionSession).getTableHandle(new QualifiedObjectName(catalog, TPCH_SCHEMA, tableName));
                     assertTrue(tableHandle.isPresent());
 
                     TableLayout layout = metadata.getLayout(transactionSession, tableHandle.get(), Constraint.alwaysTrue(), Optional.empty())
@@ -5555,7 +5555,7 @@ public class TestHiveIntegrationSmokeTest
         return transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getAccessControl())
                 .execute(session, transactionSession -> {
                     QualifiedObjectName objectName = new QualifiedObjectName(catalog, TPCH_SCHEMA, tableName);
-                    Optional<TableHandle> handle = metadata.getTableHandle(transactionSession, objectName);
+                    Optional<TableHandle> handle = metadata.getMetadataResolver(transactionSession).getTableHandle(objectName);
                     InsertTableHandle insertTableHandle = metadata.beginInsert(transactionSession, handle.get());
                     HiveInsertTableHandle hiveInsertTableHandle = (HiveInsertTableHandle) insertTableHandle.getConnectorHandle();
 

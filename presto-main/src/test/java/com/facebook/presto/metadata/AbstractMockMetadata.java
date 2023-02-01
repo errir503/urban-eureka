@@ -31,6 +31,7 @@ import com.facebook.presto.spi.MaterializedViewStatus;
 import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.spi.SystemTable;
 import com.facebook.presto.spi.TableHandle;
+import com.facebook.presto.spi.TableMetadata;
 import com.facebook.presto.spi.connector.ConnectorCapabilities;
 import com.facebook.presto.spi.connector.ConnectorOutputMetadata;
 import com.facebook.presto.spi.function.SqlFunction;
@@ -106,6 +107,12 @@ public abstract class AbstractMockMetadata
             }
 
             @Override
+            public Optional<TableHandle> getTableHandle(QualifiedObjectName tableName)
+            {
+                return Optional.empty();
+            }
+
+            @Override
             public Optional<List<ColumnMetadata>> getColumns(QualifiedObjectName tableName)
             {
                 return Optional.empty();
@@ -133,12 +140,6 @@ public abstract class AbstractMockMetadata
 
     @Override
     public List<String> listSchemaNames(Session session, String catalogName)
-    {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Optional<TableHandle> getTableHandle(Session session, QualifiedObjectName tableName)
     {
         throw new UnsupportedOperationException();
     }

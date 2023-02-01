@@ -34,6 +34,7 @@ import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.spi.SystemTable;
 import com.facebook.presto.spi.TableHandle;
 import com.facebook.presto.spi.TableLayoutFilterCoverage;
+import com.facebook.presto.spi.TableMetadata;
 import com.facebook.presto.spi.api.Experimental;
 import com.facebook.presto.spi.connector.ConnectorCapabilities;
 import com.facebook.presto.spi.connector.ConnectorOutputMetadata;
@@ -70,11 +71,6 @@ public interface Metadata
     void registerBuiltInFunctions(List<? extends SqlFunction> functions);
 
     List<String> listSchemaNames(Session session, String catalogName);
-
-    /**
-     * Returns a table handle for the specified table name.
-     */
-    Optional<TableHandle> getTableHandle(Session session, QualifiedObjectName tableName);
 
     Optional<SystemTable> getSystemTable(Session session, QualifiedObjectName tableName);
 
