@@ -67,6 +67,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -139,6 +140,7 @@ import static com.facebook.presto.tests.QueryAssertions.assertEqualsIgnoreOrder;
 import static com.facebook.presto.transaction.TransactionBuilder.transaction;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.io.Files.asCharSink;
 import static com.google.common.io.Files.createTempDir;
@@ -5914,23 +5916,29 @@ public class TestHiveIntegrationSmokeTest
                 "SELECT abs(acctbal), round(acctbal), round(acctbal, 1), repeat(custkey, 2), repeat(name, 3),  repeat(mktsegment, 4) FROM customer";
         resultWithQueryId = ((DistributedQueryRunner) queryRunner).executeWithQueryId(logFunctionNamesEnabledSession, queryWithScalarFunctions);
         queryInfo = ((DistributedQueryRunner) queryRunner).getQueryInfo(resultWithQueryId.getQueryId());
-        assertEqualsNoOrder(queryInfo.getFunctionNames(), ImmutableList.of("presto.default.abs", "presto.default.round", "presto.default.repeat"));
+        assertEqualsNoOrder(queryInfo.getScalarFunctions(), ImmutableList.of("presto.default.abs", "presto.default.round", "presto.default.repeat"));
 
-        @Language("SQL") String queryWithAggregateFunctions = "SELECT nationkey, mktsegment, arbitrary(name), arbitrary(comment), " +
+        @Language("SQL") String queryWithAggregateFunctions = "SELECT abs(nationkey), mktsegment, arbitrary(name), arbitrary(comment), " +
                 "approx_percentile(acctbal, 0.1), approx_percentile(acctbal, 0.3, 0.01) FROM customer GROUP BY nationkey, mktsegment";
         resultWithQueryId = ((DistributedQueryRunner) queryRunner).executeWithQueryId(logFunctionNamesEnabledSession, queryWithAggregateFunctions);
         queryInfo = ((DistributedQueryRunner) queryRunner).getQueryInfo(resultWithQueryId.getQueryId());
-        assertEqualsNoOrder(queryInfo.getFunctionNames(), ImmutableList.of("presto.default.arbitrary", "presto.default.approx_percentile"));
+        assertEqualsNoOrder(queryInfo.getScalarFunctions(), ImmutableList.of("presto.default.abs"));
+        assertEqualsNoOrder(queryInfo.getAggregateFunctions(), ImmutableList.of("presto.default.arbitrary", "presto.default.approx_percentile"));
 
         @Language("SQL") String queryWithWindowFunctions = "SELECT row_number() OVER(PARTITION BY mktsegment), nth_value(name, 5) OVER(PARTITION BY nationkey) FROM customer";
         resultWithQueryId = ((DistributedQueryRunner) queryRunner).executeWithQueryId(logFunctionNamesEnabledSession, queryWithWindowFunctions);
         queryInfo = ((DistributedQueryRunner) queryRunner).getQueryInfo(resultWithQueryId.getQueryId());
-        assertEqualsNoOrder(queryInfo.getFunctionNames(), ImmutableList.of("presto.default.row_number", "presto.default.nth_value"));
+        assertEqualsNoOrder(queryInfo.getWindowsFunctions(), ImmutableList.of("presto.default.row_number", "presto.default.nth_value"));
 
         @Language("SQL") String queryWithNestedFunctions = "SELECT DISTINCT nationkey FROM customer WHERE mktsegment='BUILDING' AND contains(regexp_split( phone, '-' ), '11' )";
         resultWithQueryId = ((DistributedQueryRunner) queryRunner).executeWithQueryId(logFunctionNamesEnabledSession, queryWithNestedFunctions);
         queryInfo = ((DistributedQueryRunner) queryRunner).getQueryInfo(resultWithQueryId.getQueryId());
-        assertEqualsNoOrder(queryInfo.getFunctionNames(), ImmutableList.of("presto.default.contains", "presto.default.regexp_split"));
+        assertEqualsNoOrder(queryInfo.getScalarFunctions(), ImmutableList.of("presto.default.contains", "presto.default.regexp_split"));
+
+        @Language("SQL") String queryWithFunctionsInLambda = "SELECT transform(ARRAY[nationkey, custkey], x -> abs(x)) FROM customer";
+        resultWithQueryId = ((DistributedQueryRunner) queryRunner).executeWithQueryId(logFunctionNamesEnabledSession, queryWithFunctionsInLambda);
+        queryInfo = ((DistributedQueryRunner) queryRunner).getQueryInfo(resultWithQueryId.getQueryId());
+        assertEqualsNoOrder(queryInfo.getScalarFunctions(), ImmutableList.of("presto.default.transform", "presto.default.abs"));
     }
 
     protected String retentionDays(int days)
@@ -6042,22 +6050,20 @@ public class TestHiveIntegrationSmokeTest
         }
     }
 
+    protected List<HiveStorageFormat> getSupportedHiveStorageFormats()
+    {
+        // CSV supports only unbounded VARCHAR type, and Alpha does not support DML yet
+        return Arrays.stream(HiveStorageFormat.values())
+                .filter(format -> format != HiveStorageFormat.CSV && format != HiveStorageFormat.ALPHA)
+                .collect(toImmutableList());
+    }
+
     private List<TestingHiveStorageFormat> getAllTestingHiveStorageFormat()
     {
         Session session = getSession();
-        ImmutableList.Builder<TestingHiveStorageFormat> formats = ImmutableList.builder();
-        for (HiveStorageFormat hiveStorageFormat : HiveStorageFormat.values()) {
-            if (hiveStorageFormat == HiveStorageFormat.CSV) {
-                // CSV supports only unbounded VARCHAR type
-                continue;
-            }
-            if (hiveStorageFormat == HiveStorageFormat.ALPHA) {
-                // Alpha does not support DML yet
-                continue;
-            }
-            formats.add(new TestingHiveStorageFormat(session, hiveStorageFormat));
-        }
-        return formats.build();
+        return getSupportedHiveStorageFormats().stream()
+                .map(format -> new TestingHiveStorageFormat(session, format))
+                .collect(toImmutableList());
     }
 
     private static class TestingHiveStorageFormat

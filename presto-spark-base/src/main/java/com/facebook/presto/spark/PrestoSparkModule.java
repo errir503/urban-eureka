@@ -58,7 +58,6 @@ import com.facebook.presto.execution.TaskSource;
 import com.facebook.presto.execution.executor.MultilevelSplitQueue;
 import com.facebook.presto.execution.executor.TaskExecutor;
 import com.facebook.presto.execution.resourceGroups.InternalResourceGroupManager;
-import com.facebook.presto.execution.resourceGroups.LegacyResourceGroupConfigurationManager;
 import com.facebook.presto.execution.resourceGroups.ResourceGroupManager;
 import com.facebook.presto.execution.scheduler.NodeSchedulerConfig;
 import com.facebook.presto.execution.scheduler.nodeSelection.SimpleTtlNodeSelectorConfig;
@@ -160,6 +159,7 @@ import com.facebook.presto.sql.Serialization.VariableReferenceExpressionSerializ
 import com.facebook.presto.sql.SqlEnvironmentConfig;
 import com.facebook.presto.sql.analyzer.AnalyzerProviderManager;
 import com.facebook.presto.sql.analyzer.BuiltInAnalyzerProvider;
+import com.facebook.presto.sql.analyzer.BuiltInQueryAnalyzer;
 import com.facebook.presto.sql.analyzer.BuiltInQueryPreparer;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.sql.analyzer.QueryExplainer;
@@ -417,6 +417,8 @@ public class PrestoSparkModule
 
         // analyzer
         binder.bind(BuiltInQueryPreparer.class).in(Scopes.SINGLETON);
+        newOptionalBinder(binder, QueryExplainer.class);
+        binder.bind(BuiltInQueryAnalyzer.class).in(Scopes.SINGLETON);
         binder.bind(BuiltInAnalyzerProvider.class).in(Scopes.SINGLETON);
         binder.bind(AnalyzerProviderManager.class).in(Scopes.SINGLETON);
 
@@ -430,7 +432,6 @@ public class PrestoSparkModule
         binder.bind(FragmentCacheStats.class).in(Scopes.SINGLETON);
         binder.bind(IndexJoinLookupStats.class).in(Scopes.SINGLETON);
         binder.bind(QueryIdGenerator.class).in(Scopes.SINGLETON);
-        binder.bind(BuiltInQueryPreparer.class).in(Scopes.SINGLETON);
         jsonBinder(binder).addKeySerializerBinding(VariableReferenceExpression.class).to(VariableReferenceExpressionSerializer.class);
         jsonBinder(binder).addKeyDeserializerBinding(VariableReferenceExpression.class).to(VariableReferenceExpressionDeserializer.class);
 
@@ -485,7 +486,6 @@ public class PrestoSparkModule
         binder.bind(InternalResourceGroupManager.class).in(Scopes.SINGLETON);
         binder.bind(ResourceGroupManager.class).to(InternalResourceGroupManager.class);
         binder.bind(new TypeLiteral<ResourceGroupManager<?>>() {}).to(new TypeLiteral<InternalResourceGroupManager<?>>() {});
-        binder.bind(LegacyResourceGroupConfigurationManager.class).in(Scopes.SINGLETON);
         binder.bind(ClusterMemoryPoolManager.class).toInstance(((poolId, listener) -> {}));
         binder.bind(QueryPrerequisitesManager.class).in(Scopes.SINGLETON);
         binder.bind(ResourceGroupService.class).to(NoopResourceGroupService.class).in(Scopes.SINGLETON);
