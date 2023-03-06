@@ -17,22 +17,26 @@ import com.facebook.airlift.log.Logger;
 import com.facebook.presto.Session;
 import com.facebook.presto.common.Page;
 import com.facebook.presto.common.block.BlockEncodingSerde;
+import com.facebook.presto.execution.ExecutionFailureInfo;
 import com.facebook.presto.execution.ScheduledSplit;
 import com.facebook.presto.execution.TaskInfo;
 import com.facebook.presto.execution.TaskSource;
+import com.facebook.presto.execution.TaskState;
+import com.facebook.presto.execution.TaskStatus;
 import com.facebook.presto.execution.buffer.PagesSerdeFactory;
 import com.facebook.presto.execution.scheduler.TableWriteInfo;
 import com.facebook.presto.memory.context.LocalMemoryContext;
 import com.facebook.presto.operator.DriverContext;
+import com.facebook.presto.operator.NativeExecutionInfo;
 import com.facebook.presto.operator.OperatorContext;
 import com.facebook.presto.operator.OperatorFactory;
 import com.facebook.presto.operator.SourceOperator;
 import com.facebook.presto.operator.SourceOperatorFactory;
-import com.facebook.presto.operator.SplitOperatorInfo;
 import com.facebook.presto.spark.execution.NativeExecutionProcess;
 import com.facebook.presto.spark.execution.NativeExecutionProcessFactory;
 import com.facebook.presto.spark.execution.NativeExecutionTask;
 import com.facebook.presto.spark.execution.NativeExecutionTaskFactory;
+import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.UpdatablePageSource;
 import com.facebook.presto.spi.page.PagesSerde;
 import com.facebook.presto.spi.page.SerializedPage;
@@ -42,22 +46,24 @@ import com.facebook.presto.sql.planner.LocalExecutionPlanner;
 import com.facebook.presto.sql.planner.PlanFragment;
 import com.facebook.presto.sql.planner.plan.InternalPlanVisitor;
 import com.facebook.presto.sql.planner.plan.NativeExecutionNode;
-import com.google.common.base.Suppliers;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import static com.facebook.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 import static com.facebook.presto.SystemSessionProperties.isExchangeChecksumEnabled;
 import static com.facebook.presto.SystemSessionProperties.isExchangeCompressionEnabled;
 import static com.facebook.presto.operator.PipelineExecutionStrategy.UNGROUPED_EXECUTION;
+import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
@@ -94,8 +100,10 @@ public class NativeExecutionOperator
     private NativeExecutionProcess process;
     private NativeExecutionTask task;
     private CompletableFuture<Void> taskStatusFuture;
-    private TaskSource taskSource;
+    private List<TaskSource> taskSource = new ArrayList<>();
     private boolean finished;
+
+    private final AtomicReference<NativeExecutionInfo> info = new AtomicReference<>(null);
 
     public NativeExecutionOperator(
             PlanNodeId sourceId,
@@ -116,6 +124,8 @@ public class NativeExecutionOperator
         this.serde = requireNonNull(serde, "serde is null");
         this.processFactory = requireNonNull(processFactory, "processFactory is null");
         this.taskFactory = requireNonNull(taskFactory, "taskFactory is null");
+
+        operatorContext.setInfoSupplier(info::get);
     }
 
     @Override
@@ -155,32 +165,49 @@ public class NativeExecutionOperator
             checkState(process != null, "process is null");
             createTask();
             checkState(task != null, "task is null");
-            taskStatusFuture = task.start();
+            TaskInfo taskInfo = task.start();
+            if (processTaskInfo(taskInfo)) {
+                return null;
+            }
         }
 
         try {
-            if (taskStatusFuture.isDone()) {
-                // Will throw exception if the  taskStatusFuture is done with error.
-                taskStatusFuture.get();
-                Optional<TaskInfo> taskInfo = task.getTaskInfo();
-                taskInfo.ifPresent(info -> info.getTaskStatus().getFailures().forEach(e -> log.error(e.toException())));
-                Optional<SerializedPage> page = task.pollResult();
-                if (page.isPresent()) {
-                    return processResult(page.get());
-                }
-                else {
-                    finished = true;
-                    return null;
-                }
+            Optional<SerializedPage> page = task.pollResult();
+            if (page.isPresent()) {
+                return processResult(page.get());
             }
 
-            Optional<SerializedPage> page = task.pollResult();
-            return page.map(this::processResult).orElse(null);
+            Optional<TaskInfo> taskInfo = task.getTaskInfo();
+            if (taskInfo.isPresent() && processTaskInfo(taskInfo.get())) {
+                return null;
+            }
+
+            return null;
         }
-        catch (InterruptedException | ExecutionException e) {
+        catch (InterruptedException e) {
             log.error(e);
             throw new RuntimeException(e);
         }
+    }
+
+    private boolean processTaskInfo(TaskInfo taskInfo)
+    {
+        TaskStatus taskStatus = taskInfo.getTaskStatus();
+        if (!taskStatus.getState().isDone()) {
+            return false;
+        }
+
+        if (taskStatus.getState() != TaskState.FINISHED) {
+            RuntimeException failure = taskStatus.getFailures().stream()
+                    .findFirst()
+                    .map(ExecutionFailureInfo::toException)
+                    .orElse(new PrestoException(GENERIC_INTERNAL_ERROR, "Native task failed for an unknown reason"));
+            throw failure;
+        }
+
+        info.set(new NativeExecutionInfo(ImmutableList.of(taskInfo.getStats())));
+        finished = true;
+        return true;
     }
 
     private void createProcess()
@@ -208,7 +235,7 @@ public class NativeExecutionOperator
                 uriBuilderFrom(URI.create(NATIVE_EXECUTION_SERVER_URI)).port(process.getPort()).build(),
                 operatorContext.getDriverContext().getTaskId(),
                 planFragment,
-                ImmutableList.of(taskSource),
+                ImmutableList.copyOf(taskSource),
                 tableWriteInfo,
                 shuffleWriteInfo);
     }
@@ -222,10 +249,7 @@ public class NativeExecutionOperator
     }
 
     @Override
-    public void finish()
-    {
-        finished = true;
-    }
+    public void finish() {}
 
     @Override
     public boolean isFinished()
@@ -243,24 +267,12 @@ public class NativeExecutionOperator
     public Supplier<Optional<UpdatablePageSource>> addSplit(ScheduledSplit split)
     {
         requireNonNull(split, "split is null");
-        checkState(this.taskSource == null, "NativeEngine operator split already set");
 
         if (finished) {
             return Optional::empty;
         }
 
-        this.taskSource = new TaskSource(split.getPlanNodeId(), ImmutableSet.of(split), true);
-
-        Object splitInfo = split.getSplit().getInfo();
-        Map<String, String> infoMap = split.getSplit().getInfoMap();
-
-        //Make the implicit assumption that if infoMap is populated we can use that instead of the raw object.
-        if (infoMap != null && !infoMap.isEmpty()) {
-            operatorContext.setInfoSupplier(Suppliers.ofInstance(new SplitOperatorInfo(infoMap)));
-        }
-        else if (splitInfo != null) {
-            operatorContext.setInfoSupplier(Suppliers.ofInstance(new SplitOperatorInfo(splitInfo)));
-        }
+        taskSource.add(new TaskSource(split.getPlanNodeId(), ImmutableSet.of(split), true));
 
         return Optional::empty;
     }

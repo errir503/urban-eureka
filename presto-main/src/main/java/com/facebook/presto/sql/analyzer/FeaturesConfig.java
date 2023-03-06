@@ -112,7 +112,6 @@ public class FeaturesConfig
     private boolean legacyMapSubscript;
     private boolean legacyRowFieldOrdinalAccess;
     private boolean legacyCharToVarcharCoercion;
-    private boolean legacyDateTimestampToVarcharCoercion;
     private boolean optimizeMixedDistinctAggregations;
     private boolean forceSingleNodeOutput = true;
     private boolean pagesIndexEagerCompactionEnabled;
@@ -229,7 +228,7 @@ public class FeaturesConfig
     private boolean verboseRuntimeStatsEnabled;
 
     private boolean streamingForPartialAggregationEnabled;
-    private boolean preferMergeJoin;
+    private boolean preferMergeJoinForSortedInputs;
     private boolean segmentedAggregationEnabled;
 
     private int maxStageCountForEagerScheduling = 25;
@@ -241,6 +240,7 @@ public class FeaturesConfig
     private boolean isOptimizeMultipleApproxPercentileOnSameFieldEnabled = true;
     private boolean nativeExecutionEnabled;
     private String nativeExecutionExecutablePath = "./presto_server";
+    private String nativeExecutionProgramArguments = "";
     private boolean randomizeOuterJoinNullKey;
     private RandomizeOuterJoinNullKeyStrategy randomizeOuterJoinNullKeyStrategy = RandomizeOuterJoinNullKeyStrategy.DISABLED;
     private boolean isOptimizeConditionalAggregationEnabled;
@@ -250,6 +250,7 @@ public class FeaturesConfig
     private boolean prefilterForGroupbyLimit;
     private boolean isOptimizeJoinProbeWithEmptyBuildRuntime;
     private boolean useDefaultsForCorrelatedAggregationPushdownThroughOuterJoins = true;
+    private boolean mergeDuplicateAggregationsEnabled = true;
     public enum PartitioningPrecisionStrategy
     {
         // Let Presto decide when to repartition
@@ -410,18 +411,6 @@ public class FeaturesConfig
     public boolean isLegacyCharToVarcharCoercion()
     {
         return legacyCharToVarcharCoercion;
-    }
-
-    @Config("deprecated.legacy-date-timestamp-to-varchar-coercion")
-    public FeaturesConfig setLegacyDateTimestampToVarcharCoercion(boolean legacyDateTimestampToVarcharCoercion)
-    {
-        this.legacyDateTimestampToVarcharCoercion = legacyDateTimestampToVarcharCoercion;
-        return this;
-    }
-
-    public boolean isLegacyDateTimestampToVarcharCoercion()
-    {
-        return legacyDateTimestampToVarcharCoercion;
     }
 
     @Config("deprecated.legacy-array-agg")
@@ -2203,17 +2192,17 @@ public class FeaturesConfig
         return this;
     }
 
-    public boolean isPreferMergeJoin()
+    public boolean isPreferMergeJoinForSortedInputs()
     {
-        return preferMergeJoin;
+        return preferMergeJoinForSortedInputs;
     }
 
-    @Config("optimizer.prefer-merge-join")
+    @Config("optimizer.prefer-merge-join-for-sorted-inputs")
     @ConfigDescription("Prefer merge join for sorted join inputs, e.g., tables pre-sorted, pre-partitioned by join columns." +
             "To make it work, the connector needs to guarantee and expose the data properties of the underlying table.")
-    public FeaturesConfig setPreferMergeJoin(boolean preferMergeJoin)
+    public FeaturesConfig setPreferMergeJoinForSortedInputs(boolean preferMergeJoinForSortedInputs)
     {
-        this.preferMergeJoin = preferMergeJoin;
+        this.preferMergeJoinForSortedInputs = preferMergeJoinForSortedInputs;
         return this;
     }
 
@@ -2291,6 +2280,19 @@ public class FeaturesConfig
     public String getNativeExecutionExecutablePath()
     {
         return this.nativeExecutionExecutablePath;
+    }
+
+    @Config("native-execution-program-arguments")
+    @ConfigDescription("Program arguments for native engine execution")
+    public FeaturesConfig setNativeExecutionProgramArguments(String nativeExecutionProgramArguments)
+    {
+        this.nativeExecutionProgramArguments = nativeExecutionProgramArguments;
+        return this;
+    }
+
+    public String getNativeExecutionProgramArguments()
+    {
+        return this.nativeExecutionProgramArguments;
     }
 
     public boolean isRandomizeOuterJoinNullKeyEnabled()
@@ -2407,6 +2409,19 @@ public class FeaturesConfig
     public FeaturesConfig setUseDefaultsForCorrelatedAggregationPushdownThroughOuterJoins(boolean useDefaultsForCorrelatedAggregationPushdownThroughOuterJoins)
     {
         this.useDefaultsForCorrelatedAggregationPushdownThroughOuterJoins = useDefaultsForCorrelatedAggregationPushdownThroughOuterJoins;
+        return this;
+    }
+
+    public boolean isMergeDuplicateAggregationsEnabled()
+    {
+        return mergeDuplicateAggregationsEnabled;
+    }
+
+    @Config("optimizer.merge-duplicate-aggregations")
+    @ConfigDescription("Merge identical aggregation functions within the same aggregation node")
+    public FeaturesConfig setMergeDuplicateAggregationsEnabled(boolean mergeDuplicateAggregationsEnabled)
+    {
+        this.mergeDuplicateAggregationsEnabled = mergeDuplicateAggregationsEnabled;
         return this;
     }
 }

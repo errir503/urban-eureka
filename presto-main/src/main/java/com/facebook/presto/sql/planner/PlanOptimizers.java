@@ -26,14 +26,9 @@ import com.facebook.presto.sql.planner.iterative.IterativeOptimizer;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.iterative.properties.LogicalPropertiesProviderImpl;
 import com.facebook.presto.sql.planner.iterative.rule.AddIntermediateAggregations;
-import com.facebook.presto.sql.planner.iterative.rule.CanonicalizeExpressions;
 import com.facebook.presto.sql.planner.iterative.rule.CombineApproxPercentileFunctions;
 import com.facebook.presto.sql.planner.iterative.rule.CreatePartialTopN;
-import com.facebook.presto.sql.planner.iterative.rule.DesugarAtTimeZone;
-import com.facebook.presto.sql.planner.iterative.rule.DesugarCurrentUser;
 import com.facebook.presto.sql.planner.iterative.rule.DesugarLambdaExpression;
-import com.facebook.presto.sql.planner.iterative.rule.DesugarRowSubscript;
-import com.facebook.presto.sql.planner.iterative.rule.DesugarTryExpression;
 import com.facebook.presto.sql.planner.iterative.rule.DetermineJoinDistributionType;
 import com.facebook.presto.sql.planner.iterative.rule.DetermineSemiJoinDistributionType;
 import com.facebook.presto.sql.planner.iterative.rule.EliminateCrossJoins;
@@ -47,6 +42,7 @@ import com.facebook.presto.sql.planner.iterative.rule.ImplementFilteredAggregati
 import com.facebook.presto.sql.planner.iterative.rule.ImplementOffset;
 import com.facebook.presto.sql.planner.iterative.rule.InlineProjections;
 import com.facebook.presto.sql.planner.iterative.rule.InlineSqlFunctions;
+import com.facebook.presto.sql.planner.iterative.rule.MergeDuplicateAggregation;
 import com.facebook.presto.sql.planner.iterative.rule.MergeFilters;
 import com.facebook.presto.sql.planner.iterative.rule.MergeLimitWithDistinct;
 import com.facebook.presto.sql.planner.iterative.rule.MergeLimitWithSort;
@@ -138,7 +134,7 @@ import com.facebook.presto.sql.planner.optimizations.ImplementIntersectAndExcept
 import com.facebook.presto.sql.planner.optimizations.IndexJoinOptimizer;
 import com.facebook.presto.sql.planner.optimizations.KeyBasedSampler;
 import com.facebook.presto.sql.planner.optimizations.LimitPushDown;
-import com.facebook.presto.sql.planner.optimizations.MergeJoinOptimizer;
+import com.facebook.presto.sql.planner.optimizations.MergeJoinForSortedInputOptimizer;
 import com.facebook.presto.sql.planner.optimizations.MetadataDeleteOptimizer;
 import com.facebook.presto.sql.planner.optimizations.MetadataQueryOptimizer;
 import com.facebook.presto.sql.planner.optimizations.OptimizeMixedDistinctAggregations;
@@ -301,25 +297,6 @@ public class PlanOptimizers
         PlanOptimizer prefilterForLimitingAggregation = new StatsRecordingPlanOptimizer(optimizerStats, new PrefilterForLimitingAggregation(metadata, statsCalculator));
 
         builder.add(
-                // Clean up all the sugar in expressions, e.g. AtTimeZone, must be run before all the other optimizers
-                new IterativeOptimizer(
-                        ruleStats,
-                        statsCalculator,
-                        estimatedExchangesCostCalculator,
-                        ImmutableSet.<Rule<?>>builder()
-                                .addAll(new InlineSqlFunctions(metadata, sqlParser).rules())
-                                .addAll(new DesugarLambdaExpression().rules())
-                                .addAll(new DesugarAtTimeZone(metadata, sqlParser).rules())
-                                .addAll(new DesugarCurrentUser().rules())
-                                .addAll(new DesugarTryExpression().rules())
-                                .addAll(new SimplifyCardinalityMap().rules())
-                                .addAll(new DesugarRowSubscript(metadata, sqlParser).rules())
-                                .build()),
-                new IterativeOptimizer(
-                        ruleStats,
-                        statsCalculator,
-                        estimatedExchangesCostCalculator,
-                        new CanonicalizeExpressions().rules()),
                 // TODO: move this before optimization if possible!!
                 // Replace all expressions with row expressions
                 new IterativeOptimizer(
@@ -328,6 +305,15 @@ public class PlanOptimizers
                         costCalculator,
                         new TranslateExpressions(metadata, sqlParser).rules()),
                 // After this point, all planNodes should not contain OriginalExpression
+                new IterativeOptimizer(
+                        ruleStats,
+                        statsCalculator,
+                        estimatedExchangesCostCalculator,
+                        ImmutableSet.<Rule<?>>builder()
+                                .addAll(new InlineSqlFunctions(metadata, sqlParser).rules())
+                                .addAll(new DesugarLambdaExpression().rules())
+                                .addAll(new SimplifyCardinalityMap().rules())
+                                .build()),
                 new IterativeOptimizer(
                         ruleStats,
                         statsCalculator,
@@ -341,6 +327,7 @@ public class PlanOptimizers
                                 .addAll(predicatePushDownRules)
                                 .addAll(columnPruningRules)
                                 .addAll(ImmutableSet.of(
+                                        new MergeDuplicateAggregation(metadata.getFunctionAndTypeManager()),
                                         new RemoveRedundantIdentityProjections(),
                                         new RemoveFullSample(),
                                         new EvaluateZeroSample(),
@@ -688,10 +675,10 @@ public class PlanOptimizers
                         .add(new InlineProjections(metadata.getFunctionAndTypeManager()))
                         .build()));
 
-        // MergeJoinOptimizer can avoid the local exchange for a join operation
+        // MergeJoinForSortedInputOptimizer can avoid the local exchange for a join operation
         // Should be placed after AddExchanges, but before AddLocalExchange
         // To replace the JoinNode to MergeJoin ahead of AddLocalExchange to avoid adding extra local exchange
-        builder.add(new MergeJoinOptimizer(metadata, sqlParser));
+        builder.add(new MergeJoinForSortedInputOptimizer(metadata, sqlParser));
 
         // Optimizers above this don't understand local exchanges, so be careful moving this.
         builder.add(new AddLocalExchanges(metadata, sqlParser));

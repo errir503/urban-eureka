@@ -54,6 +54,7 @@ import static com.facebook.presto.SystemSessionProperties.KEY_BASED_SAMPLING_ENA
 import static com.facebook.presto.SystemSessionProperties.KEY_BASED_SAMPLING_FUNCTION;
 import static com.facebook.presto.SystemSessionProperties.KEY_BASED_SAMPLING_PERCENTAGE;
 import static com.facebook.presto.SystemSessionProperties.LEGACY_UNNEST;
+import static com.facebook.presto.SystemSessionProperties.MERGE_DUPLICATE_AGGREGATIONS;
 import static com.facebook.presto.SystemSessionProperties.OFFSET_CLAUSE_ENABLED;
 import static com.facebook.presto.SystemSessionProperties.OPTIMIZE_CASE_EXPRESSION_PREDICATE;
 import static com.facebook.presto.SystemSessionProperties.OPTIMIZE_JOINS_WITH_EMPTY_SOURCES;
@@ -6256,6 +6257,8 @@ public abstract class AbstractTestQueries
         assertQuery("select m[1], m[3] from (select map_subset(map(array[1,2,3,4], array['a', 'b', 'c', 'd']), array[1,3,10]) m)", "select 'a', 'c'");
         assertQuery("select cardinality(map_subset(map(array[1,2,3,4], array['a', 'b', 'c', 'd']), array[10,20]))", "select 0");
         assertQuery("select cardinality(map_subset(map(), array[10,20]))", "select 0");
+        assertQuerySucceeds("select map_subset(map(), array[10,20])"); // cannot compare to other map as the type is unknown. Just test that the query succeeds!
+        assertQuerySucceeds("select map_subset(map(array[1], array[1]), array[])");
     }
 
     @Test
@@ -6465,5 +6468,17 @@ public abstract class AbstractTestQueries
         assertQuery(session,
                 "select count(*) from nation n where (select max_by(custkey, c.name) from customer c where n.nationkey=c.nationkey)>2000",
                 "select 0");
+    }
+
+    @Test
+    public void testMergeDuplicateAggregations()
+    {
+        Session session = Session.builder(getSession())
+                .setSystemProperty(MERGE_DUPLICATE_AGGREGATIONS, "true")
+                .build();
+        assertQuery(session, "SELECT linenumber, min(orderkey) " +
+                "FROM lineitem " +
+                "GROUP BY linenumber " +
+                "HAVING min(orderkey) < (SELECT avg(orderkey) FROM orders WHERE orderkey < 7)");
     }
 }

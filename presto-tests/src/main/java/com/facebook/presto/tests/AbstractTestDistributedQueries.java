@@ -1249,7 +1249,33 @@ public abstract class AbstractTestDistributedQueries
         }
 
         MaterializedResult countStarQuery = computeActual(session, "select count(t.m1) from (SELECT l.* FROM lineitem_map l left join orders o on (l.orderkey = o.orderkey) left join part p on (l.partkey=p.partkey)) t");
-        assertEquals((Long) countStarQuery.getOnlyValue(), 60175);
+        assertEquals((Long) countStarQuery.getOnlyValue(), Long.valueOf(60175L));
+    }
+
+    @Test
+    public void testStringFilters()
+    {
+        assertUpdate("CREATE TABLE test_charn_filter (shipmode CHAR(10))");
+        assertTrue(getQueryRunner().tableExists(getSession(), "test_charn_filter"));
+        assertTableColumnNames("test_charn_filter", "shipmode");
+        assertUpdate("INSERT INTO test_charn_filter SELECT shipmode FROM lineitem", 60175);
+
+        assertQuery("SELECT count(*) FROM test_charn_filter WHERE shipmode = 'AIR'", "VALUES (8491)");
+        assertQuery("SELECT count(*) FROM test_charn_filter WHERE shipmode = 'AIR    '", "VALUES (8491)");
+        assertQuery("SELECT count(*) FROM test_charn_filter WHERE shipmode = 'AIR       '", "VALUES (8491)");
+        assertQuery("SELECT count(*) FROM test_charn_filter WHERE shipmode = 'AIR            '", "VALUES (8491)");
+        assertQuery("SELECT count(*) FROM test_charn_filter WHERE shipmode = 'NONEXIST'", "VALUES (0)");
+
+        assertUpdate("CREATE TABLE test_varcharn_filter (shipmode VARCHAR(10))");
+        assertTrue(getQueryRunner().tableExists(getSession(), "test_varcharn_filter"));
+        assertTableColumnNames("test_varcharn_filter", "shipmode");
+        assertUpdate("INSERT INTO test_varcharn_filter SELECT shipmode FROM lineitem", 60175);
+
+        assertQuery("SELECT count(*) FROM test_varcharn_filter WHERE shipmode = 'AIR'", "VALUES (8491)");
+        assertQuery("SELECT count(*) FROM test_varcharn_filter WHERE shipmode = 'AIR    '", "VALUES (0)");
+        assertQuery("SELECT count(*) FROM test_varcharn_filter WHERE shipmode = 'AIR       '", "VALUES (0)");
+        assertQuery("SELECT count(*) FROM test_varcharn_filter WHERE shipmode = 'AIR            '", "VALUES (0)");
+        assertQuery("SELECT count(*) FROM test_varcharn_filter WHERE shipmode = 'NONEXIST'", "VALUES (0)");
     }
 
     private String sanitizePlan(String explain)

@@ -203,7 +203,6 @@ public final class SystemSessionProperties
     public static final String DYNAMIC_FILTERING_MAX_PER_DRIVER_SIZE = "dynamic_filtering_max_per_driver_size";
     public static final String DYNAMIC_FILTERING_RANGE_ROW_LIMIT_PER_DRIVER = "dynamic_filtering_range_row_limit_per_driver";
     public static final String FRAGMENT_RESULT_CACHING_ENABLED = "fragment_result_caching_enabled";
-    public static final String LEGACY_TYPE_COERCION_WARNING_ENABLED = "legacy_type_coercion_warning_enabled";
     public static final String INLINE_SQL_FUNCTIONS = "inline_sql_functions";
     public static final String REMOTE_FUNCTIONS_ENABLED = "remote_functions_enabled";
     public static final String CHECK_ACCESS_CONTROL_ON_UTILIZED_COLUMNS_ONLY = "check_access_control_on_utilized_columns_only";
@@ -236,7 +235,7 @@ public final class SystemSessionProperties
     public static final String STREAMING_FOR_PARTIAL_AGGREGATION_ENABLED = "streaming_for_partial_aggregation_enabled";
     public static final String MAX_STAGE_COUNT_FOR_EAGER_SCHEDULING = "max_stage_count_for_eager_scheduling";
     public static final String HYPERLOGLOG_STANDARD_ERROR_WARNING_THRESHOLD = "hyperloglog_standard_error_warning_threshold";
-    public static final String PREFER_MERGE_JOIN = "prefer_merge_join";
+    public static final String PREFER_MERGE_JOIN_FOR_SORTED_INPUTS = "prefer_merge_join_for_sorted_inputs";
     public static final String SEGMENTED_AGGREGATION_ENABLED = "segmented_aggregation_enabled";
     public static final String USE_HISTORY_BASED_PLAN_STATISTICS = "use_history_based_plan_statistics";
     public static final String TRACK_HISTORY_BASED_PLAN_STATISTICS = "track_history_based_plan_statistics";
@@ -260,6 +259,7 @@ public final class SystemSessionProperties
     public static final String PREFILTER_FOR_GROUPBY_LIMIT_TIMEOUT_MS = "prefilter_for_groupby_limit_timeout_ms";
     public static final String OPTIMIZE_JOIN_PROBE_FOR_EMPTY_BUILD_RUNTIME = "optimize_join_probe_for_empty_build_runtime";
     public static final String USE_DEFAULTS_FOR_CORRELATED_AGGREGATION_PUSHDOWN_THROUGH_OUTER_JOINS = "use_defaults_for_correlated_aggregation_pushdown_through_outer_joins";
+    public static final String MERGE_DUPLICATE_AGGREGATIONS = "merge_duplicate_aggregations";
 
     // TODO: Native execution related session properties that are temporarily put here. They will be relocated in the future.
     public static final String NATIVE_SIMPLIFIED_EXPRESSION_EVALUATION_ENABLED = "simplified_expression_evaluation_enabled";
@@ -268,6 +268,7 @@ public final class SystemSessionProperties
     public static final String NATIVE_ORDER_BY_SPILL_MEMORY_THRESHOLD = "order_by_spill_memory_threshold";
     public static final String NATIVE_EXECUTION_ENABLED = "native_execution_enabled";
     public static final String NATIVE_EXECUTION_EXECUTABLE_PATH = "native_execution_executable_path";
+    public static final String NATIVE_EXECUTION_PROGRAM_ARGUMENTS = "native_execution_program_arguments";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -1132,11 +1133,6 @@ public final class SystemSessionProperties
                         featuresConfig.isFragmentResultCachingEnabled(),
                         false),
                 booleanProperty(
-                        LEGACY_TYPE_COERCION_WARNING_ENABLED,
-                        "Enable warning for query relying on legacy type coercion",
-                        featuresConfig.isLegacyDateTimestampToVarcharCoercion(),
-                        true),
-                booleanProperty(
                         SKIP_REDUNDANT_SORT,
                         "Skip redundant sort operations",
                         featuresConfig.isSkipRedundantSort(),
@@ -1279,10 +1275,10 @@ public final class SystemSessionProperties
                         featuresConfig.isStreamingForPartialAggregationEnabled(),
                         false),
                 booleanProperty(
-                        PREFER_MERGE_JOIN,
+                        PREFER_MERGE_JOIN_FOR_SORTED_INPUTS,
                         "Prefer merge join for sorted join inputs, e.g., tables pre-sorted, pre-partitioned by join columns." +
                                 "To make it work, the connector needs to guarantee and expose the data properties of the underlying table.",
-                        featuresConfig.isPreferMergeJoin(),
+                        featuresConfig.isPreferMergeJoinForSortedInputs(),
                         true),
                 booleanProperty(
                         SEGMENTED_AGGREGATION_ENABLED,
@@ -1427,6 +1423,21 @@ public final class SystemSessionProperties
                         "The native engine executable file path for native engine execution",
                         featuresConfig.getNativeExecutionExecutablePath(),
                         false),
+                stringProperty(
+                        NATIVE_EXECUTION_PROGRAM_ARGUMENTS,
+                        "Program arguments for native engine execution. The main target use case for this " +
+                        "property is to control logging levels using glog flags. E,g, to enable verbose mode, add " +
+                        "'--v 1'. More advanced glog gflags usage can be found at " +
+                        "https://rpg.ifi.uzh.ch/docs/glog.html\n" +
+                        "e.g. --vmodule=mapreduce=2,file=1,gfs*=3 --v=0\n" +
+                        "will:\n" +
+                        "\n" +
+                        "a. Print VLOG(2) and lower messages from mapreduce.{h,cc}\n" +
+                        "b. Print VLOG(1) and lower messages from file.{h,cc}\n" +
+                        "c. Print VLOG(3) and lower messages from files prefixed with \"gfs\"\n" +
+                        "d. Print VLOG(0) and lower messages from elsewhere",
+                        featuresConfig.getNativeExecutionProgramArguments(),
+                        false),
                 booleanProperty(
                         RANDOMIZE_OUTER_JOIN_NULL_KEY,
                         "(Deprecated) Randomize null join key for outer join",
@@ -1482,6 +1493,11 @@ public final class SystemSessionProperties
                         USE_DEFAULTS_FOR_CORRELATED_AGGREGATION_PUSHDOWN_THROUGH_OUTER_JOINS,
                         "Coalesce with defaults for correlated aggregations",
                         featuresConfig.isUseDefaultsForCorrelatedAggregationPushdownThroughOuterJoins(),
+                        false),
+                booleanProperty(
+                        MERGE_DUPLICATE_AGGREGATIONS,
+                        "Merge identical aggregation functions within the same aggregation node",
+                        featuresConfig.isMergeDuplicateAggregationsEnabled(),
                         false));
     }
 
@@ -2239,11 +2255,6 @@ public final class SystemSessionProperties
         return session.getSystemProperty(FRAGMENT_RESULT_CACHING_ENABLED, Boolean.class);
     }
 
-    public static boolean isLegacyTypeCoercionWarningEnabled(Session session)
-    {
-        return session.getSystemProperty(LEGACY_TYPE_COERCION_WARNING_ENABLED, Boolean.class);
-    }
-
     public static boolean isInlineSqlFunctions(Session session)
     {
         return session.getSystemProperty(INLINE_SQL_FUNCTIONS, Boolean.class);
@@ -2359,9 +2370,9 @@ public final class SystemSessionProperties
         return session.getSystemProperty(STREAMING_FOR_PARTIAL_AGGREGATION_ENABLED, Boolean.class);
     }
 
-    public static boolean preferMergeJoin(Session session)
+    public static boolean preferMergeJoinForSortedInputs(Session session)
     {
-        return session.getSystemProperty(PREFER_MERGE_JOIN, Boolean.class);
+        return session.getSystemProperty(PREFER_MERGE_JOIN_FOR_SORTED_INPUTS, Boolean.class);
     }
 
     public static boolean isSegmentedAggregationEnabled(Session session)
@@ -2444,6 +2455,11 @@ public final class SystemSessionProperties
         return session.getSystemProperty(NATIVE_EXECUTION_EXECUTABLE_PATH, String.class);
     }
 
+    public static String getNativeExecutionProgramArguments(Session session)
+    {
+        return session.getSystemProperty(NATIVE_EXECUTION_PROGRAM_ARGUMENTS, String.class);
+    }
+
     public static RandomizeOuterJoinNullKeyStrategy getRandomizeOuterJoinNullKeyStrategy(Session session)
     {
         // If RANDOMIZE_OUTER_JOIN_NULL_KEY is set to true, return always enabled, otherwise get strategy from RANDOMIZE_OUTER_JOIN_NULL_KEY_STRATEGY
@@ -2491,5 +2507,10 @@ public final class SystemSessionProperties
     public static boolean useDefaultsForCorrelatedAggregationPushdownThroughOuterJoins(Session session)
     {
         return session.getSystemProperty(USE_DEFAULTS_FOR_CORRELATED_AGGREGATION_PUSHDOWN_THROUGH_OUTER_JOINS, Boolean.class);
+    }
+
+    public static boolean isMergeDuplicateAggregationsEnabled(Session session)
+    {
+        return session.getSystemProperty(MERGE_DUPLICATE_AGGREGATIONS, Boolean.class);
     }
 }
