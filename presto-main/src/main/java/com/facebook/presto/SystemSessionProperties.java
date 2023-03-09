@@ -238,6 +238,7 @@ public final class SystemSessionProperties
     public static final String SEGMENTED_AGGREGATION_ENABLED = "segmented_aggregation_enabled";
     public static final String USE_HISTORY_BASED_PLAN_STATISTICS = "use_history_based_plan_statistics";
     public static final String TRACK_HISTORY_BASED_PLAN_STATISTICS = "track_history_based_plan_statistics";
+    public static final String USE_PERFECTLY_CONSISTENT_HISTORIES = "use_perfectly_consistent_histories";
     public static final String MAX_LEAF_NODES_IN_PLAN = "max_leaf_nodes_in_plan";
     public static final String LEAF_NODE_LIMIT_ENABLED = "leaf_node_limit_enabled";
     public static final String PUSH_REMOTE_EXCHANGE_THROUGH_GROUP_ID = "push_remote_exchange_through_group_id";
@@ -254,6 +255,7 @@ public final class SystemSessionProperties
     public static final String REMOVE_REDUNDANT_DISTINCT_AGGREGATION_ENABLED = "remove_redundant_distinct_aggregation_enabled";
     public static final String PREFILTER_FOR_GROUPBY_LIMIT = "prefilter_for_groupby_limit";
     public static final String PREFILTER_FOR_GROUPBY_LIMIT_TIMEOUT_MS = "prefilter_for_groupby_limit_timeout_ms";
+    public static final String OPTIMIZE_JOIN_PROBE_FOR_EMPTY_BUILD_RUNTIME = "optimize_join_probe_for_empty_build_runtime";
 
     // TODO: Native execution related session properties that are temporarily put here. They will be relocated in the future.
     public static final String NATIVE_SIMPLIFIED_EXPRESSION_EVALUATION_ENABLED = "simplified_expression_evaluation_enabled";
@@ -1357,6 +1359,11 @@ public final class SystemSessionProperties
                         "Track history based plan statistics service in query optimizer",
                         featuresConfig.isTrackHistoryBasedPlanStatistics(),
                         false),
+                booleanProperty(
+                        USE_PERFECTLY_CONSISTENT_HISTORIES,
+                        "Use perfectly consistent histories for history based optimizations, even when parts of a query are re-ordered.",
+                        featuresConfig.isUsePerfectlyConsistentHistories(),
+                        false),
                 new PropertyMetadata<>(
                         MAX_LEAF_NODES_IN_PLAN,
                         "Maximum number of leaf nodes in the logical plan of SQL statement",
@@ -1444,6 +1451,11 @@ public final class SystemSessionProperties
                         PREFILTER_FOR_GROUPBY_LIMIT_TIMEOUT_MS,
                         "Timeout for finding the LIMIT number of keys for group by",
                         10000,
+                        false),
+                booleanProperty(
+                        OPTIMIZE_JOIN_PROBE_FOR_EMPTY_BUILD_RUNTIME,
+                        "Optimize join probe at runtime if build side is empty",
+                        featuresConfig.isOptimizeJoinProbeForEmptyBuildRuntimeEnabled(),
                         false));
     }
 
@@ -2382,6 +2394,11 @@ public final class SystemSessionProperties
         return session.getSystemProperty(TRACK_HISTORY_BASED_PLAN_STATISTICS, Boolean.class);
     }
 
+    public static boolean usePerfectlyConsistentHistories(Session session)
+    {
+        return session.getSystemProperty(USE_PERFECTLY_CONSISTENT_HISTORIES, Boolean.class);
+    }
+
     public static boolean shouldPushRemoteExchangeThroughGroupId(Session session)
     {
         return session.getSystemProperty(PUSH_REMOTE_EXCHANGE_THROUGH_GROUP_ID, Boolean.class);
@@ -2430,5 +2447,10 @@ public final class SystemSessionProperties
     public static int getPrefilterForGroupbyLimitTimeoutMS(Session session)
     {
         return session.getSystemProperty(PREFILTER_FOR_GROUPBY_LIMIT_TIMEOUT_MS, Integer.class);
+    }
+
+    public static boolean isOptimizeJoinProbeForEmptyBuildRuntimeEnabled(Session session)
+    {
+        return session.getSystemProperty(OPTIMIZE_JOIN_PROBE_FOR_EMPTY_BUILD_RUNTIME, Boolean.class);
     }
 }

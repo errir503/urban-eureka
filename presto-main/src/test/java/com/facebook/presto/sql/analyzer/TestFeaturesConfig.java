@@ -76,6 +76,7 @@ public class TestFeaturesConfig
                 .setMaxReorderedJoins(9)
                 .setUseHistoryBasedPlanStatistics(false)
                 .setTrackHistoryBasedPlanStatistics(false)
+                .setUsePerfectlyConsistentHistories(false)
                 .setRedistributeWrites(true)
                 .setScaleWriters(false)
                 .setWriterMinSize(new DataSize(32, MEGABYTE))
@@ -215,7 +216,8 @@ public class TestFeaturesConfig
                 .setRemoveRedundantDistinctAggregationEnabled(true)
                 .setInPredicatesAsInnerJoinsEnabled(false)
                 .setPushAggregationBelowJoinByteReductionThreshold(1)
-                .setPrefilterForGroupbyLimit(false));
+                .setPrefilterForGroupbyLimit(false)
+                .setOptimizeJoinProbeForEmptyBuildRuntimeEnabled(false));
     }
 
     @Test
@@ -264,6 +266,7 @@ public class TestFeaturesConfig
                 .put("optimizer.max-reordered-joins", "5")
                 .put("optimizer.use-history-based-plan-statistics", "true")
                 .put("optimizer.track-history-based-plan-statistics", "true")
+                .put("optimizer.use-perfectly-consistent-histories", "true")
                 .put("redistribute-writes", "false")
                 .put("scale-writers", "true")
                 .put("writer-min-size", "42GB")
@@ -382,6 +385,7 @@ public class TestFeaturesConfig
                 .put("optimizer.in-predicates-as-inner-joins-enabled", "true")
                 .put("optimizer.push-aggregation-below-join-byte-reduction-threshold", "0.9")
                 .put("optimizer.prefilter-for-groupby-limit", "true")
+                .put("optimizer.optimize-probe-for-empty-build-runtime", "true")
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -417,6 +421,7 @@ public class TestFeaturesConfig
                 .setMaxReorderedJoins(5)
                 .setUseHistoryBasedPlanStatistics(true)
                 .setTrackHistoryBasedPlanStatistics(true)
+                .setUsePerfectlyConsistentHistories(true)
                 .setRedistributeWrites(false)
                 .setScaleWriters(true)
                 .setWriterMinSize(new DataSize(42, GIGABYTE))
@@ -545,7 +550,8 @@ public class TestFeaturesConfig
                 .setRemoveRedundantDistinctAggregationEnabled(false)
                 .setInPredicatesAsInnerJoinsEnabled(true)
                 .setPushAggregationBelowJoinByteReductionThreshold(0.9)
-                .setPrefilterForGroupbyLimit(true);
+                .setPrefilterForGroupbyLimit(true)
+                .setOptimizeJoinProbeForEmptyBuildRuntimeEnabled(true);
         assertFullMapping(properties, expected);
     }
 

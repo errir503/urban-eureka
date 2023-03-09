@@ -13,11 +13,12 @@
  */
 package com.facebook.presto.sql.planner.iterative.rule;
 
+import com.facebook.presto.spi.VariableAllocator;
 import com.facebook.presto.spi.plan.FilterNode;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
-import com.facebook.presto.sql.planner.PlanVariableAllocator;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.VariablesExtractor;
 import com.google.common.collect.Streams;
 
@@ -38,11 +39,11 @@ public class PruneFilterColumns
     }
 
     @Override
-    protected Optional<PlanNode> pushDownProjectOff(PlanNodeIdAllocator idAllocator, PlanVariableAllocator variableAllocator, FilterNode filterNode, Set<VariableReferenceExpression> referencedOutputs)
+    protected Optional<PlanNode> pushDownProjectOff(PlanNodeIdAllocator idAllocator, VariableAllocator variableAllocator, FilterNode filterNode, Set<VariableReferenceExpression> referencedOutputs)
     {
         Set<VariableReferenceExpression> prunedFilterInputs = Streams.concat(
                 referencedOutputs.stream(),
-                VariablesExtractor.extractUnique(castToExpression(filterNode.getPredicate()), variableAllocator.getTypes()).stream())
+                VariablesExtractor.extractUnique(castToExpression(filterNode.getPredicate()), TypeProvider.viewOf(variableAllocator.getVariables())).stream())
                 .collect(toImmutableSet());
 
         return restrictChildOutputs(idAllocator, filterNode, prunedFilterInputs);

@@ -44,6 +44,7 @@ import com.facebook.presto.sql.planner.iterative.rule.ExtractSpatialJoins;
 import com.facebook.presto.sql.planner.iterative.rule.GatherAndMergeWindows;
 import com.facebook.presto.sql.planner.iterative.rule.ImplementBernoulliSampleAsFilter;
 import com.facebook.presto.sql.planner.iterative.rule.ImplementFilteredAggregations;
+import com.facebook.presto.sql.planner.iterative.rule.ImplementFilteredAggregationsUsingExpressions;
 import com.facebook.presto.sql.planner.iterative.rule.ImplementOffset;
 import com.facebook.presto.sql.planner.iterative.rule.InlineProjections;
 import com.facebook.presto.sql.planner.iterative.rule.InlineSqlFunctions;
@@ -304,7 +305,7 @@ public class PlanOptimizers
                 new RewriteCaseExpressionPredicate(metadata.getFunctionAndTypeManager()).rules());
 
         PlanOptimizer predicatePushDown = new StatsRecordingPlanOptimizer(optimizerStats, new PredicatePushDown(metadata, sqlParser));
-        PlanOptimizer prefilterForLimitingAggregation = new StatsRecordingPlanOptimizer(optimizerStats, new PrefilterForLimitingAggregation(metadata));
+        PlanOptimizer prefilterForLimitingAggregation = new StatsRecordingPlanOptimizer(optimizerStats, new PrefilterForLimitingAggregation(metadata, statsCalculator));
 
         builder.add(
                 // Clean up all the sugar in expressions, e.g. AtTimeZone, must be run before all the other optimizers
@@ -353,7 +354,7 @@ public class PlanOptimizers
                                         new PushLimitThroughSemiJoin(),
                                         new PushLimitThroughUnion(),
                                         new RemoveTrivialFilters(),
-                                        new ImplementFilteredAggregations(),
+                                        new ImplementFilteredAggregationsUsingExpressions(),
                                         new SingleDistinctAggregationToGroupBy(),
                                         new MultipleDistinctAggregationToMarkDistinct(),
                                         new ImplementBernoulliSampleAsFilter(),
@@ -386,6 +387,14 @@ public class PlanOptimizers
                         statsCalculator,
                         estimatedExchangesCostCalculator,
                         columnPruningRules),
+                // TODO: move this before optimization if possible!!
+                // Replace all expressions with row expressions
+                new IterativeOptimizer(
+                        ruleStats,
+                        statsCalculator,
+                        costCalculator,
+                        new TranslateExpressions(metadata, sqlParser).rules()),
+                // After this point, all planNodes should not contain OriginalExpression
                 new IterativeOptimizer(
                         ruleStats,
                         statsCalculator,
@@ -402,7 +411,7 @@ public class PlanOptimizers
                                 new TransformUncorrelatedInPredicateSubqueryToDistinctInnerJoin(),
                                 new TransformUncorrelatedInPredicateSubqueryToSemiJoin(),
                                 new TransformCorrelatedScalarAggregationToJoin(metadata.getFunctionAndTypeManager()),
-                                new TransformCorrelatedLateralJoinToJoin())),
+                                new TransformCorrelatedLateralJoinToJoin(metadata.getFunctionAndTypeManager()))),
                 new IterativeOptimizer(
                         ruleStats,
                         statsCalculator,
@@ -410,9 +419,9 @@ public class PlanOptimizers
                         ImmutableSet.of(
                                 new RemoveUnreferencedScalarApplyNodes(),
                                 new TransformCorrelatedInPredicateToJoin(metadata.getFunctionAndTypeManager()), // must be run after PruneUnreferencedOutputs
-                                new TransformCorrelatedScalarSubquery(), // must be run after TransformCorrelatedScalarAggregationToJoin
-                                new TransformCorrelatedLateralJoinToJoin(),
-                                new ImplementFilteredAggregations())),
+                                new TransformCorrelatedScalarSubquery(metadata.getFunctionAndTypeManager()), // must be run after TransformCorrelatedScalarAggregationToJoin
+                                new TransformCorrelatedLateralJoinToJoin(metadata.getFunctionAndTypeManager()),
+                                new ImplementFilteredAggregations(metadata.getFunctionAndTypeManager()))),
                 new IterativeOptimizer(
                         ruleStats,
                         statsCalculator,
@@ -428,16 +437,6 @@ public class PlanOptimizers
                         estimatedExchangesCostCalculator,
                         ImmutableSet.of(
                                 new PullConstantsAboveGroupBy())));
-
-        // TODO: move this before optimization if possible!!
-        // Replace all expressions with row expressions
-        builder.add(
-                new IterativeOptimizer(
-                ruleStats,
-                statsCalculator,
-                costCalculator,
-                new TranslateExpressions(metadata, sqlParser).rules()));
-        // After this point, all planNodes should not contain OriginalExpression
 
         builder.add(new IterativeOptimizer(
                 ruleStats,

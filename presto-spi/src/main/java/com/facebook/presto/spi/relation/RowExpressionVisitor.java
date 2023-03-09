@@ -26,4 +26,9 @@ public interface RowExpressionVisitor<R, C>
     R visitVariableReference(VariableReferenceExpression reference, C context);
 
     R visitSpecialForm(SpecialFormExpression specialForm, C context);
+
+    default R visitIntermediateFormExpression(IntermediateFormExpression intermediateFormExpression, C context)
+    {
+        return null;
+    }
 }
