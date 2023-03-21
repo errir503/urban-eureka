@@ -11,21 +11,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.parquet;
+package com.facebook.presto.spi.analyzer;
 
-import com.facebook.presto.parquet.reader.ColumnChunk;
-import com.facebook.presto.parquet.reader.PageReader;
-import org.apache.parquet.internal.filter2.columnindex.RowRanges;
-
-public interface ColumnReader
+public enum AccessControlRole
 {
-    boolean isInitialized();
-
-    void init(PageReader pageReader, Field field, RowRanges rowRanges);
-
-    void prepareNextRead(int batchSize);
-
-    ColumnChunk readNext();
-
-    long getRetainedSizeInBytes();
+    TABLE_CREATE,
+    TABLE_INSERT,
+    TABLE_DELETE
 }
