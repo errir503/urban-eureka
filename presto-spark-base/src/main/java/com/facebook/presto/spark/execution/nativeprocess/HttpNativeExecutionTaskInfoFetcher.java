@@ -18,7 +18,9 @@ import com.facebook.presto.execution.TaskInfo;
 import com.facebook.presto.server.RequestErrorTracker;
 import com.facebook.presto.server.smile.BaseResponse;
 import com.facebook.presto.spark.execution.http.PrestoSparkHttpTaskClient;
+import com.facebook.presto.spark.util.PrestoSparkStatsCollectionUtils;
 import com.facebook.presto.spi.PrestoException;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -91,61 +93,77 @@ public class HttpNativeExecutionTaskInfoFetcher
 
     public void start()
     {
-        scheduledFuture = updateScheduledExecutor.scheduleWithFixedDelay(() ->
-        {
-            try {
-                ListenableFuture<BaseResponse<TaskInfo>> taskInfoFuture = workerClient.getTaskInfo();
-                Futures.addCallback(
-                        taskInfoFuture,
-                        new FutureCallback<BaseResponse<TaskInfo>>()
-                        {
-                            @Override
-                            public void onSuccess(BaseResponse<TaskInfo> result)
-                            {
-                                log.debug("TaskInfoCallback success %s", result.getValue().getTaskId());
-                                taskInfo.set(result.getValue());
-                                if (result.getValue().getTaskStatus().getState().isDone()) {
-                                    synchronized (taskFinished) {
-                                        taskFinished.notifyAll();
-                                    }
-                                }
-                            }
-
-                            @Override
-                            public void onFailure(Throwable t)
-                            {
-                                // record failure
-                                try {
-                                    errorTracker.requestFailed(t);
-                                }
-                                catch (PrestoException e) {
-                                    stop();
-                                    lastException.set(e);
-                                    return;
-                                }
-                                ListenableFuture<?> errorRateLimit = errorTracker.acquireRequestPermit();
-                                try {
-                                    // synchronously wait on throttling
-                                    errorRateLimit.get(maxErrorDuration.toMillis(), TimeUnit.MILLISECONDS);
-                                }
-                                catch (InterruptedException | ExecutionException | TimeoutException e) {
-                                    // throttling error is not fatal, just log the error.
-                                    log.debug(e.getMessage());
-                                }
-                            }
-                        },
-                        executor);
-            }
-            catch (Throwable t) {
-                throw t;
-            }
-        }, 0, (long) infoFetchInterval.getValue(), infoFetchInterval.getUnit());
+        scheduledFuture = updateScheduledExecutor.scheduleWithFixedDelay(
+                this::doGetTaskInfo, 0, (long) infoFetchInterval.getValue(), infoFetchInterval.getUnit());
     }
 
     public void stop()
     {
         if (scheduledFuture != null) {
             scheduledFuture.cancel(false);
+        }
+    }
+
+    @VisibleForTesting
+    void doGetTaskInfo()
+    {
+        try {
+            ListenableFuture<BaseResponse<TaskInfo>> taskInfoFuture = workerClient.getTaskInfo();
+            Futures.addCallback(
+                    taskInfoFuture,
+                    new FutureCallback<BaseResponse<TaskInfo>>()
+                    {
+                        @Override
+                        public void onSuccess(BaseResponse<TaskInfo> result)
+                        {
+                            log.debug("TaskInfoCallback success %s", result.getValue().getTaskId());
+                            taskInfo.set(result.getValue());
+
+                            // Update Spark Accumulators for spark internal metrics
+                            // Note: Updating here also serves as a heartbeat to spark scheduler
+                            // that the task is making progress
+                            PrestoSparkStatsCollectionUtils.collectMetrics(taskInfo.get());
+
+                            if (result.getValue().getTaskStatus().getState().isDone()) {
+                                synchronized (taskFinished) {
+                                    taskFinished.notifyAll();
+                                }
+                            }
+                        }
+
+                        @Override
+                        public void onFailure(Throwable t)
+                        {
+                            // record failure
+                            try {
+                                errorTracker.requestFailed(t);
+                            }
+                            catch (PrestoException e) {
+                                // Entering here means that we are unable
+                                // to get any task info from the CPP process
+                                // likely because process has crashed
+                                stop();
+                                lastException.set(e);
+                                synchronized (taskFinished) {
+                                    taskFinished.notifyAll();
+                                }
+                                return;
+                            }
+                            ListenableFuture<?> errorRateLimit = errorTracker.acquireRequestPermit();
+                            try {
+                                // synchronously wait on throttling
+                                errorRateLimit.get(maxErrorDuration.toMillis(), TimeUnit.MILLISECONDS);
+                            }
+                            catch (InterruptedException | ExecutionException | TimeoutException e) {
+                                // throttling error is not fatal, just log the error.
+                                log.debug(e.getMessage());
+                            }
+                        }
+                    },
+                    executor);
+        }
+        catch (Throwable t) {
+            throw t;
         }
     }
 
@@ -157,5 +175,10 @@ public class HttpNativeExecutionTaskInfoFetcher
         }
         TaskInfo info = taskInfo.get();
         return info == null ? Optional.empty() : Optional.of(info);
+    }
+
+    public AtomicReference<RuntimeException> getLastException()
+    {
+        return lastException;
     }
 }

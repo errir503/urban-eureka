@@ -50,7 +50,6 @@ import com.facebook.presto.spark.execution.nativeprocess.NativeExecutionProcess;
 import com.facebook.presto.spark.execution.nativeprocess.NativeExecutionProcessFactory;
 import com.facebook.presto.spark.execution.shuffle.PrestoSparkShuffleInfoTranslator;
 import com.facebook.presto.spark.execution.shuffle.PrestoSparkShuffleWriteInfo;
-import com.facebook.presto.spark.util.PrestoSparkStatsCollectionUtils;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.page.SerializedPage;
 import com.facebook.presto.spi.plan.OutputNode;
@@ -258,7 +257,7 @@ public class PrestoSparkNativeTaskExecutorFactory
         // task creation might have failed
         processTaskInfoForErrorsOrCompletion(taskInfo);
         // 4. return output to spark RDD layer
-        return new PrestoSparkNativeTaskOutputIterator<>(task, outputType, taskInfoCollector, taskInfoCodec, executionExceptionFactory);
+        return new PrestoSparkNativeTaskOutputIterator<>(partitionId, task, outputType, taskInfoCollector, taskInfoCodec, executionExceptionFactory);
     }
 
     @Override
@@ -269,10 +268,10 @@ public class PrestoSparkNativeTaskExecutorFactory
         }
     }
 
-    private static void completeTask(CollectionAccumulator<SerializedTaskInfo> taskInfoCollector, NativeExecutionTask task, Codec<TaskInfo> taskInfoCodec)
+    private static void completeTask(boolean success, CollectionAccumulator<SerializedTaskInfo> taskInfoCollector, NativeExecutionTask task, Codec<TaskInfo> taskInfoCodec)
     {
         // stop the task
-        task.stop();
+        task.stop(success);
 
         // collect statistics (if available)
         Optional<TaskInfo> taskInfoOptional = task.getTaskInfo();
@@ -282,9 +281,6 @@ public class PrestoSparkNativeTaskExecutorFactory
         }
         SerializedTaskInfo serializedTaskInfo = new SerializedTaskInfo(serializeZstdCompressed(taskInfoCodec, taskInfoOptional.get()));
         taskInfoCollector.add(serializedTaskInfo);
-
-        // Update Spark Accumulators for spark internal metrics
-        PrestoSparkStatsCollectionUtils.collectMetrics(taskInfoOptional.get());
     }
 
     private static void processTaskInfoForErrorsOrCompletion(TaskInfo taskInfo)
@@ -391,6 +387,7 @@ public class PrestoSparkNativeTaskExecutorFactory
             extends AbstractIterator<Tuple2<MutablePartitionId, T>>
             implements IPrestoSparkTaskExecutor<T>
     {
+        private final int partitionId;
         private final NativeExecutionTask nativeExecutionTask;
         private Optional<SerializedPage> next = Optional.empty();
         private final CollectionAccumulator<SerializedTaskInfo> taskInfoCollectionAccumulator;
@@ -399,12 +396,14 @@ public class PrestoSparkNativeTaskExecutorFactory
         private final PrestoSparkExecutionExceptionFactory executionExceptionFactory;
 
         public PrestoSparkNativeTaskOutputIterator(
+                int partitionId,
                 NativeExecutionTask nativeExecutionTask,
                 Class<T> outputType,
                 CollectionAccumulator<SerializedTaskInfo> taskInfoCollectionAccumulator,
                 Codec<TaskInfo> taskInfoCodec,
                 PrestoSparkExecutionExceptionFactory executionExceptionFactory)
         {
+            this.partitionId = partitionId;
             this.nativeExecutionTask = nativeExecutionTask;
             this.taskInfoCollectionAccumulator = taskInfoCollectionAccumulator;
             this.taskInfoCodec = taskInfoCodec;
@@ -487,7 +486,7 @@ public class PrestoSparkNativeTaskExecutorFactory
             }
             catch (RuntimeException ex) {
                 // For a failed task, if taskInfo is present we still want to log the metrics
-                completeTask(taskInfoCollectionAccumulator, nativeExecutionTask, taskInfoCodec);
+                completeTask(false, taskInfoCollectionAccumulator, nativeExecutionTask, taskInfoCodec);
                 throw executionExceptionFactory.toPrestoSparkExecutionException(ex);
             }
             catch (InterruptedException e) {
@@ -496,7 +495,7 @@ public class PrestoSparkNativeTaskExecutorFactory
             }
 
             // Reaching here marks the end of task processing
-            completeTask(taskInfoCollectionAccumulator, nativeExecutionTask, taskInfoCodec);
+            completeTask(true, taskInfoCollectionAccumulator, nativeExecutionTask, taskInfoCodec);
             return Optional.empty();
         }
 
@@ -507,7 +506,11 @@ public class PrestoSparkNativeTaskExecutorFactory
             checkArgument(outputType == PrestoSparkSerializedPage.class,
                     format("PrestoSparkNativeTaskExecutorFactory only outputType=PrestoSparkSerializedPage" +
                             "But tried to extract outputType=%s", outputType));
-            return new Tuple2<>(new MutablePartitionId(), (T) toPrestoSparkSerializedPage(next.get()));
+
+            // Set partition ID to help match the results to the task on the driver for debugging.
+            MutablePartitionId mutablePartitionId = new MutablePartitionId();
+            mutablePartitionId.setPartition(partitionId);
+            return new Tuple2<>(mutablePartitionId, (T) toPrestoSparkSerializedPage(next.get()));
         }
     }
 }
