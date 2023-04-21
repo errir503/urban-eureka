@@ -98,7 +98,7 @@ import static com.google.inject.multibindings.MapBinder.newMapBinder;
  */
 public class PrestoDataDefBindingHelper
 {
-    private PrestoDataDefBindingHelper(){}
+    private PrestoDataDefBindingHelper() {}
 
     private static final Map<Class<? extends Statement>, Class<? extends DataDefinitionTask<?>>> STATEMENT_TASK_TYPES;
     private static final Map<Class<? extends Statement>, Class<? extends DataDefinitionTask<?>>> TRANSACTION_CONTROL_TYPES;
@@ -121,9 +121,7 @@ public class PrestoDataDefBindingHelper
         dataDefBuilder.put(DropView.class, DropViewTask.class);
         dataDefBuilder.put(CreateMaterializedView.class, CreateMaterializedViewTask.class);
         dataDefBuilder.put(DropMaterializedView.class, DropMaterializedViewTask.class);
-        dataDefBuilder.put(CreateFunction.class, CreateFunctionTask.class);
         dataDefBuilder.put(AlterFunction.class, AlterFunctionTask.class);
-        dataDefBuilder.put(DropFunction.class, DropFunctionTask.class);
         dataDefBuilder.put(Call.class, CallTask.class);
         dataDefBuilder.put(CreateRole.class, CreateRoleTask.class);
         dataDefBuilder.put(DropRole.class, DropRoleTask.class);
@@ -141,6 +139,8 @@ public class PrestoDataDefBindingHelper
         transactionDefBuilder.put(SetRole.class, SetRoleTask.class);
         transactionDefBuilder.put(Prepare.class, PrepareTask.class);
         transactionDefBuilder.put(Deallocate.class, DeallocateTask.class);
+        transactionDefBuilder.put(CreateFunction.class, CreateFunctionTask.class);
+        transactionDefBuilder.put(DropFunction.class, DropFunctionTask.class);
 
         STATEMENT_TASK_TYPES = dataDefBuilder.build();
         TRANSACTION_CONTROL_TYPES = transactionDefBuilder.build();
@@ -157,10 +157,10 @@ public class PrestoDataDefBindingHelper
 
     public static void bindTransactionControlDefinitionTasks(Binder binder)
     {
-        MapBinder<Class<? extends Statement>, DataDefinitionTask<?>> taskBinder = newMapBinder(binder,
-                new TypeLiteral<Class<? extends Statement>>() {
-                }, new TypeLiteral<DataDefinitionTask<?>>() {
-                });
+        MapBinder<Class<? extends Statement>, DataDefinitionTask<?>> taskBinder = newMapBinder(
+                binder,
+                new TypeLiteral<Class<? extends Statement>>() {},
+                new TypeLiteral<DataDefinitionTask<?>>() {});
 
         TRANSACTION_CONTROL_TYPES.entrySet().stream()
                 .forEach(entry -> taskBinder.addBinding(entry.getKey()).to(entry.getValue()).in(Scopes.SINGLETON));
