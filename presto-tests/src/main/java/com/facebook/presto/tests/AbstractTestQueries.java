@@ -840,9 +840,10 @@ public abstract class AbstractTestQueries
         assertQuery("SELECT JSON_FORMAT(CAST(TRY(MAP(ARRAY[NULL], ARRAY[x])) AS JSON)) FROM (VALUES 1, 2) t(x)", "SELECT * FROM (VALUES NULL, NULL)");
 
         assertQuery("SELECT cardinality(m) FROM (SELECT map_agg(orderkey, orderkey) m FROM orders)", "SELECT count(orderkey) FROM orders");
+        assertQuery("SELECT cast(cardinality(m) as varchar) FROM (SELECT map_agg(orderkey, orderkey) m FROM orders)", "SELECT cast(count(orderkey) as varchar) FROM orders");
         assertQuery("SELECT cardinality(map_keys(m)) FROM (SELECT map_agg(orderkey, orderkey) m FROM orders)", "SELECT count(orderkey) FROM orders");
         assertQuery("SELECT cardinality(map_values(m)) FROM (SELECT map_agg(orderkey, orderkey) m FROM orders)", "SELECT count(orderkey) FROM orders");
-        assertQuery("SELECT cardinality(map_keys(m)) + cardinality(map_values(m)) FROM (SELECT map_agg(orderkey, orderkey) m FROM orders)", "SELECT count(orderkey) * 2 FROM orders");
+        assertQuery("SELECT cardinality(map_keys(m)) + cardinality(map_values(m)) FROM (SELECT map_agg(cast(orderkey as varchar), cast(orderkey as varchar)) m FROM orders)", "SELECT count(orderkey) * 2 FROM orders");
         assertQuery("SELECT cardinality(map(array[cardinality(map_values(m))], array[cardinality(map_values(m))])) FROM (SELECT map_agg(orderkey, orderkey) m FROM orders)", "SELECT 1");
     }
 
@@ -3667,7 +3668,7 @@ public abstract class AbstractTestQueries
     @Test
     public void testCorrelatedScalarSubqueries()
     {
-        assertQuery("SELECT (SELECT n.nationkey) FROM nation n");
+        assertQuery("SELECT (SELECT n.nationkey + n.NATIONKEY) FROM nation n");
         assertQuery("SELECT (SELECT 2 * n.nationkey) FROM nation n");
         assertQuery("SELECT nationkey FROM nation n WHERE 2 = (SELECT 2 * n.nationkey)");
         assertQuery("SELECT nationkey FROM nation n ORDER BY (SELECT 2 * n.nationkey)");
