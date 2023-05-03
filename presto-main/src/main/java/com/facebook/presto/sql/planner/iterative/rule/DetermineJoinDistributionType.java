@@ -30,6 +30,7 @@ import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher;
 import com.facebook.presto.sql.planner.plan.JoinNode;
+import com.facebook.presto.sql.planner.plan.RemoteSourceNode;
 import com.facebook.presto.sql.planner.plan.UnnestNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
@@ -93,7 +94,7 @@ public class DetermineJoinDistributionType
         PlanNodeStatsEstimate buildSideStatsEstimate = context.getStatsProvider().getStats(buildSide);
         double buildSideSizeInBytes = buildSideStatsEstimate.getOutputSizeInBytes(buildSide);
         return buildSideSizeInBytes <= joinMaxBroadcastTableSize.toBytes()
-            || (isSizeBasedJoinDistributionTypeEnabled(context.getSession())
+                || (isSizeBasedJoinDistributionTypeEnabled(context.getSession())
                 && getSourceTablesSizeInBytes(buildSide, context) <= joinMaxBroadcastTableSize.toBytes());
     }
 
@@ -189,7 +190,7 @@ public class DetermineJoinDistributionType
         }
 
         List<PlanNode> sourceNodes = PlanNodeSearcher.searchFrom(node, lookup)
-                .whereIsInstanceOfAny(ImmutableList.of(TableScanNode.class, ValuesNode.class))
+                .whereIsInstanceOfAny(ImmutableList.of(TableScanNode.class, ValuesNode.class, RemoteSourceNode.class))
                 .findAll();
 
         return sourceNodes.stream()
@@ -213,38 +214,38 @@ public class DetermineJoinDistributionType
     public static double getFirstKnownOutputSizeInBytes(PlanNode node, Lookup lookup, StatsProvider statsProvider)
     {
         return Stream.of(node)
-            .flatMap(planNode -> {
-                if (planNode instanceof GroupReference) {
-                    return lookup.resolveGroup(node);
-                }
-                return Stream.of(planNode);
-            })
-            .mapToDouble(resolvedNode -> {
-                double outputSizeInBytes = statsProvider.getStats(resolvedNode).getOutputSizeInBytes(resolvedNode);
-                if (!isNaN(outputSizeInBytes)) {
-                    return outputSizeInBytes;
-                }
+                .flatMap(planNode -> {
+                    if (planNode instanceof GroupReference) {
+                        return lookup.resolveGroup(node);
+                    }
+                    return Stream.of(planNode);
+                })
+                .mapToDouble(resolvedNode -> {
+                    double outputSizeInBytes = statsProvider.getStats(resolvedNode).getOutputSizeInBytes(resolvedNode);
+                    if (!isNaN(outputSizeInBytes)) {
+                        return outputSizeInBytes;
+                    }
 
-                if (EXPANDING_NODE_CLASSES.stream().anyMatch(clazz -> clazz.isInstance(resolvedNode))) {
-                    return NaN;
-                }
-
-                List<PlanNode> sourceNodes = resolvedNode.getSources();
-                if (sourceNodes.isEmpty()) {
-                    return NaN;
-                }
-
-                double sourcesOutputSizeInBytes = 0;
-                for (PlanNode sourceNode : sourceNodes) {
-                    double firstKnownOutputSizeInBytes = getFirstKnownOutputSizeInBytes(sourceNode, lookup, statsProvider);
-                    if (isNaN(firstKnownOutputSizeInBytes)) {
+                    if (EXPANDING_NODE_CLASSES.stream().anyMatch(clazz -> clazz.isInstance(resolvedNode))) {
                         return NaN;
                     }
-                    sourcesOutputSizeInBytes += firstKnownOutputSizeInBytes;
-                }
-                return sourcesOutputSizeInBytes;
-            })
-            .sum();
+
+                    List<PlanNode> sourceNodes = resolvedNode.getSources();
+                    if (sourceNodes.isEmpty()) {
+                        return NaN;
+                    }
+
+                    double sourcesOutputSizeInBytes = 0;
+                    for (PlanNode sourceNode : sourceNodes) {
+                        double firstKnownOutputSizeInBytes = getFirstKnownOutputSizeInBytes(sourceNode, lookup, statsProvider);
+                        if (isNaN(firstKnownOutputSizeInBytes)) {
+                            return NaN;
+                        }
+                        sourcesOutputSizeInBytes += firstKnownOutputSizeInBytes;
+                    }
+                    return sourcesOutputSizeInBytes;
+                })
+                .sum();
     }
 
     private void addJoinsWithDifferentDistributions(JoinNode joinNode, List<PlanNodeWithCost> possibleJoinNodes, Context context)
