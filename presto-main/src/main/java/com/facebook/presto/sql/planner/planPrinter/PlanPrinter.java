@@ -78,7 +78,6 @@ import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.LateralJoinNode;
 import com.facebook.presto.sql.planner.plan.MergeJoinNode;
 import com.facebook.presto.sql.planner.plan.MetadataDeleteNode;
-import com.facebook.presto.sql.planner.plan.NativeExecutionNode;
 import com.facebook.presto.sql.planner.plan.PlanFragmentId;
 import com.facebook.presto.sql.planner.plan.RemoteSourceNode;
 import com.facebook.presto.sql.planner.plan.RowNumberNode;
@@ -122,6 +121,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.facebook.presto.SystemSessionProperties.isVerboseOptimizerInfoEnabled;
 import static com.facebook.presto.common.type.VarcharType.VARCHAR;
 import static com.facebook.presto.execution.StageInfo.getAllStages;
 import static com.facebook.presto.expressions.DynamicFilters.extractDynamicFilters;
@@ -180,7 +180,7 @@ public class PlanPrinter
                 .mapToLong(planNode -> planNode.getPlanNodeScheduledTime().toMillis())
                 .sum(), MILLISECONDS));
 
-        this.representation = new PlanRepresentation(planRoot, types, totalCpuTime, totalScheduledTime);
+        this.representation = new PlanRepresentation(planRoot, types, totalCpuTime, totalScheduledTime, session.getOptimizerInformationCollector().getOptimizationInfo());
 
         RowExpressionFormatter rowExpressionFormatter = new RowExpressionFormatter(functionAndTypeManager);
         ConnectorSession connectorSession = requireNonNull(session, "session is null").toConnectorSession();
@@ -190,9 +190,9 @@ public class PlanPrinter
         planRoot.accept(visitor, null);
     }
 
-    public String toText(boolean verbose, int level)
+    public String toText(boolean verbose, int level, boolean verboseOptimizerInfo)
     {
-        return new TextRenderer(verbose, level).render(representation);
+        return new TextRenderer(verbose, level, verboseOptimizerInfo).render(representation);
     }
 
     public String toJson()
@@ -209,7 +209,13 @@ public class PlanPrinter
 
     public static String textLogicalPlan(PlanNode plan, TypeProvider types, StatsAndCosts estimatedStatsAndCosts, FunctionAndTypeManager functionAndTypeManager, Session session, int level)
     {
-        return new PlanPrinter(plan, types, Optional.empty(), estimatedStatsAndCosts, Optional.empty(), functionAndTypeManager, session).toText(false, level);
+        return new PlanPrinter(plan, types,
+                Optional.empty(),
+                estimatedStatsAndCosts,
+                Optional.empty(),
+                functionAndTypeManager,
+                session)
+                .toText(false, level, isVerboseOptimizerInfoEnabled(session));
     }
 
     public static String textLogicalPlan(
@@ -235,7 +241,7 @@ public class PlanPrinter
             int level,
             boolean verbose)
     {
-        return new PlanPrinter(plan, types, stageExecutionStrategy, estimatedStatsAndCosts, stats, functionAndTypeManager, session).toText(verbose, level);
+        return new PlanPrinter(plan, types, stageExecutionStrategy, estimatedStatsAndCosts, stats, functionAndTypeManager, session).toText(verbose, level, isVerboseOptimizerInfoEnabled(session));
     }
 
     public static String textDistributedPlan(StageInfo outputStageInfo, FunctionAndTypeManager functionAndTypeManager, Session session, boolean verbose)
@@ -1221,15 +1227,6 @@ public class PlanPrinter
             addNode(node, "Lateral", format("[%s]", node.getCorrelation()));
 
             return processChildren(node, context);
-        }
-
-        @Override
-        public Void visitNativeExecution(NativeExecutionNode node, Void context)
-        {
-            // Do not add 'node' as it shares the ID with the root node of the sub-plan.
-            node.getSubPlan().accept(this, context);
-
-            return null;
         }
 
         @Override
