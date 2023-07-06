@@ -70,6 +70,7 @@ import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStra
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.PartialAggregationStrategy.ALWAYS;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.PartialAggregationStrategy.NEVER;
 import static com.google.common.base.Preconditions.checkArgument;
+import static java.lang.Boolean.TRUE;
 import static java.lang.Math.min;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -274,6 +275,9 @@ public final class SystemSessionProperties
     public static final String REWRITE_CROSS_JOIN_OR_TO_INNER_JOIN = "rewrite_cross_join_or_to_inner_join";
     public static final String REWRITE_CROSS_JOIN_ARRAY_CONTAINS_TO_INNER_JOIN = "rewrite_cross_join_array_contains_to_inner_join";
     public static final String REWRITE_LEFT_JOIN_NULL_FILTER_TO_SEMI_JOIN = "rewrite_left_join_null_filter_to_semi_join";
+    public static final String USE_BROADCAST_WHEN_BUILDSIZE_SMALL_PROBESIDE_UNKNOWN = "use_broadcast_when_buildsize_small_probeside_unknown";
+    public static final String ADD_PARTIAL_NODE_FOR_ROW_NUMBER_WITH_LIMIT = "add_partial_node_for_row_number_with_limit";
+    public static final String REWRITE_CASE_TO_MAP_ENABLED = "rewrite_case_to_map_enabled";
 
     // TODO: Native execution related session properties that are temporarily put here. They will be relocated in the future.
     public static final String NATIVE_SIMPLIFIED_EXPRESSION_EVALUATION_ENABLED = "simplified_expression_evaluation_enabled";
@@ -1591,6 +1595,21 @@ public final class SystemSessionProperties
                         REWRITE_LEFT_JOIN_NULL_FILTER_TO_SEMI_JOIN,
                         "Rewrite left join with is null check to semi join",
                         featuresConfig.isLeftJoinNullFilterToSemiJoin(),
+                        false),
+                booleanProperty(
+                        USE_BROADCAST_WHEN_BUILDSIZE_SMALL_PROBESIDE_UNKNOWN,
+                        "Experimental: When probe side size is unknown but build size is within broadcast limit, choose broadcast join",
+                        featuresConfig.isBroadcastJoinWithSmallBuildUnknownProbe(),
+                        false),
+                booleanProperty(
+                        ADD_PARTIAL_NODE_FOR_ROW_NUMBER_WITH_LIMIT,
+                        "Add partial row number node for row number node with limit",
+                        featuresConfig.isAddPartialNodeForRowNumberWithLimitEnabled(),
+                        false),
+                booleanProperty(
+                        REWRITE_CASE_TO_MAP_ENABLED,
+                        "Rewrite case with constant WHEN/THEN/ELSE clauses to use map literals",
+                        TRUE,
                         false));
     }
 
@@ -2673,5 +2692,20 @@ public final class SystemSessionProperties
     public static boolean isRewriteLeftJoinNullFilterToSemiJoinEnabled(Session session)
     {
         return session.getSystemProperty(REWRITE_LEFT_JOIN_NULL_FILTER_TO_SEMI_JOIN, Boolean.class);
+    }
+
+    public static boolean isUseBroadcastJoinWhenBuildSizeSmallProbeSizeUnknownEnabled(Session session)
+    {
+        return session.getSystemProperty(USE_BROADCAST_WHEN_BUILDSIZE_SMALL_PROBESIDE_UNKNOWN, Boolean.class);
+    }
+
+    public static boolean isAddPartialNodeForRowNumberWithLimit(Session session)
+    {
+        return session.getSystemProperty(ADD_PARTIAL_NODE_FOR_ROW_NUMBER_WITH_LIMIT, Boolean.class);
+    }
+
+    public static boolean isRewriteCaseToMapEnabled(Session session)
+    {
+        return session.getSystemProperty(REWRITE_CASE_TO_MAP_ENABLED, Boolean.class);
     }
 }

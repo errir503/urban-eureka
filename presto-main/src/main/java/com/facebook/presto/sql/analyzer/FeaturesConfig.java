@@ -268,6 +268,8 @@ public class FeaturesConfig
     private boolean rewriteCrossJoinWithArrayContainsFilterToInnerJoin = true;
     private JoinNotNullInferenceStrategy joinNotNullInferenceStrategy = NONE;
     private boolean leftJoinNullFilterToSemiJoin = true;
+    private boolean broadcastJoinWithSmallBuildUnknownProbe;
+    private boolean addPartialNodeForRowNumberWithLimit = true;
 
     private boolean preProcessMetadataCalls;
 
@@ -2638,6 +2640,32 @@ public class FeaturesConfig
     public FeaturesConfig setLeftJoinNullFilterToSemiJoin(boolean leftJoinNullFilterToSemiJoin)
     {
         this.leftJoinNullFilterToSemiJoin = leftJoinNullFilterToSemiJoin;
+        return this;
+    }
+
+    public boolean isBroadcastJoinWithSmallBuildUnknownProbe()
+    {
+        return this.broadcastJoinWithSmallBuildUnknownProbe;
+    }
+
+    @Config("experimental.optimizer.broadcast-join-with-small-build-unknown-probe")
+    @ConfigDescription("Experimental: When probe side size is unknown but build size is within broadcast limit, choose broadcast join")
+    public FeaturesConfig setBroadcastJoinWithSmallBuildUnknownProbe(boolean broadcastJoinWithSmallBuildUnknownProbe)
+    {
+        this.broadcastJoinWithSmallBuildUnknownProbe = broadcastJoinWithSmallBuildUnknownProbe;
+        return this;
+    }
+
+    public boolean isAddPartialNodeForRowNumberWithLimitEnabled()
+    {
+        return this.addPartialNodeForRowNumberWithLimit;
+    }
+
+    @Config("optimizer.add-partial-node-for-row-number-with-limit")
+    @ConfigDescription("Add partial row number node for row number node with limit")
+    public FeaturesConfig setAddPartialNodeForRowNumberWithLimitEnabled(boolean addPartialNodeForRowNumberWithLimit)
+    {
+        this.addPartialNodeForRowNumberWithLimit = addPartialNodeForRowNumberWithLimit;
         return this;
     }
 }

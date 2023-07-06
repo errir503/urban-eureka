@@ -60,6 +60,7 @@ import com.facebook.presto.spark.classloader_interface.PrestoSparkTaskExecutorFa
 import com.facebook.presto.spark.classloader_interface.PrestoSparkTaskOutput;
 import com.facebook.presto.spark.classloader_interface.SerializedPrestoSparkTaskDescriptor;
 import com.facebook.presto.spark.classloader_interface.SerializedTaskInfo;
+import com.facebook.presto.spark.execution.task.PrestoSparkTaskExecutorFactory;
 import com.facebook.presto.spark.planner.PrestoSparkPlanFragmenter;
 import com.facebook.presto.spark.planner.PrestoSparkQueryPlanner.PlanAndMore;
 import com.facebook.presto.spark.planner.PrestoSparkRddFactory;
@@ -415,7 +416,8 @@ public abstract class AbstractPrestoSparkQueryExecution
                 types.size() == 1 &&
                 types.get(0).equals(BIGINT) &&
                 results.size() == 1 &&
-                results.get(0).size() == 1) {
+                results.get(0).size() == 1 &&
+                results.get(0).get(0) != null) {
             updateCount = OptionalLong.of(((Number) results.get(0).get(0)).longValue());
         }
 
