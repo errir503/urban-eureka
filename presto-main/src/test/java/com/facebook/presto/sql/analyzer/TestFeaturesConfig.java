@@ -240,7 +240,8 @@ public class TestFeaturesConfig
                 .setLeftJoinNullFilterToSemiJoin(true)
                 .setBroadcastJoinWithSmallBuildUnknownProbe(false)
                 .setAddPartialNodeForRowNumberWithLimitEnabled(true)
-                .setPullUpExpressionFromLambdaEnabled(true));
+                .setInferInequalityPredicates(false)
+                .setPullUpExpressionFromLambdaEnabled(false));
     }
 
     @Test
@@ -428,7 +429,8 @@ public class TestFeaturesConfig
                 .put("optimizer.rewrite-left-join-with-null-filter-to-semi-join", "false")
                 .put("experimental.optimizer.broadcast-join-with-small-build-unknown-probe", "true")
                 .put("optimizer.add-partial-node-for-row-number-with-limit", "false")
-                .put("optimizer.pull-up-expression-from-lambda", "false")
+                .put("optimizer.infer-inequality-predicates", "true")
+                .put("optimizer.pull-up-expression-from-lambda", "true")
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -614,7 +616,8 @@ public class TestFeaturesConfig
                 .setLeftJoinNullFilterToSemiJoin(false)
                 .setBroadcastJoinWithSmallBuildUnknownProbe(true)
                 .setAddPartialNodeForRowNumberWithLimitEnabled(false)
-                .setPullUpExpressionFromLambdaEnabled(false);
+                .setInferInequalityPredicates(true)
+                .setPullUpExpressionFromLambdaEnabled(true);
         assertFullMapping(properties, expected);
     }
 
