@@ -14,7 +14,6 @@
 package com.facebook.presto.sql.analyzer;
 
 import com.facebook.presto.spi.eventlistener.CTEInformation;
-import com.facebook.presto.sql.tree.QualifiedName;
 import com.google.common.collect.ImmutableList;
 
 import java.util.HashMap;
@@ -24,10 +23,10 @@ public class CTEInformationCollector
 {
     private final HashMap<String, CTEInformation> cteInformationMap = new HashMap<>();
 
-    public void addCTEReference(QualifiedName cteName, boolean isView)
+    public void addCTEReference(String cteName, boolean isView)
     {
-        cteInformationMap.putIfAbsent(cteName.toString(), new CTEInformation(cteName.toString(), 0, isView));
-        cteInformationMap.get(cteName.toString()).incrementReferences();
+        cteInformationMap.putIfAbsent(cteName, new CTEInformation(cteName, 0, isView));
+        cteInformationMap.get(cteName).incrementReferences();
     }
 
     public List<CTEInformation> getCTEInformationList()
