@@ -37,6 +37,7 @@ import com.facebook.presto.sql.analyzer.FeaturesConfig.PartialMergePushdownStrat
 import com.facebook.presto.sql.analyzer.FeaturesConfig.PartitioningPrecisionStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.PushDownFilterThroughCrossJoinStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.RandomizeOuterJoinNullKeyStrategy;
+import com.facebook.presto.sql.analyzer.FeaturesConfig.ShardedJoinStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.SingleStreamSpillerChoice;
 import com.facebook.presto.sql.planner.CompilerConfig;
 import com.facebook.presto.tracing.TracingConfig;
@@ -259,6 +260,8 @@ public final class SystemSessionProperties
     public static final String RANDOMIZE_OUTER_JOIN_NULL_KEY = "randomize_outer_join_null_key";
     public static final String RANDOMIZE_OUTER_JOIN_NULL_KEY_STRATEGY = "randomize_outer_join_null_key_strategy";
     public static final String RANDOMIZE_OUTER_JOIN_NULL_KEY_NULL_RATIO_THRESHOLD = "randomize_outer_join_null_key_null_ratio_threshold";
+    public static final String SHARDED_JOINS_STRATEGY = "sharded_joins_strategy";
+    public static final String JOIN_SHARD_COUNT = "join_shard_count";
     public static final String IN_PREDICATES_AS_INNER_JOINS_ENABLED = "in_predicates_as_inner_joins_enabled";
     public static final String PUSH_AGGREGATION_BELOW_JOIN_BYTE_REDUCTION_THRESHOLD = "push_aggregation_below_join_byte_reduction_threshold";
     public static final String KEY_BASED_SAMPLING_ENABLED = "key_based_sampling_enabled";
@@ -279,6 +282,7 @@ public final class SystemSessionProperties
     public static final String PUSH_DOWN_FILTER_EXPRESSION_EVALUATION_THROUGH_CROSS_JOIN = "push_down_filter_expression_evaluation_through_cross_join";
     public static final String REWRITE_CROSS_JOIN_OR_TO_INNER_JOIN = "rewrite_cross_join_or_to_inner_join";
     public static final String REWRITE_CROSS_JOIN_ARRAY_CONTAINS_TO_INNER_JOIN = "rewrite_cross_join_array_contains_to_inner_join";
+    public static final String REWRITE_CROSS_JOIN_ARRAY_NOT_CONTAINS_TO_ANTI_JOIN = "rewrite_cross_join_array_not_contains_to_anti_join";
     public static final String REWRITE_LEFT_JOIN_NULL_FILTER_TO_SEMI_JOIN = "rewrite_left_join_null_filter_to_semi_join";
     public static final String USE_BROADCAST_WHEN_BUILDSIZE_SMALL_PROBESIDE_UNKNOWN = "use_broadcast_when_buildsize_small_probeside_unknown";
     public static final String ADD_PARTIAL_NODE_FOR_ROW_NUMBER_WITH_LIMIT = "add_partial_node_for_row_number_with_limit";
@@ -287,7 +291,6 @@ public final class SystemSessionProperties
     public static final String PULL_EXPRESSION_FROM_LAMBDA_ENABLED = "pull_expression_from_lambda_enabled";
     public static final String REWRITE_CONSTANT_ARRAY_CONTAINS_TO_IN_EXPRESSION = "rewrite_constant_array_contains_to_in_expression";
     public static final String INFER_INEQUALITY_PREDICATES = "infer_inequality_predicates";
-    public static final String HANDLE_COMPLEX_EQUI_JOINS = "handle_complex_equi_joins";
 
     // TODO: Native execution related session properties that are temporarily put here. They will be relocated in the future.
     public static final String NATIVE_SIMPLIFIED_EXPRESSION_EVALUATION_ENABLED = "simplified_expression_evaluation_enabled";
@@ -1547,6 +1550,23 @@ public final class SystemSessionProperties
                         "Enable randomizing null join key for outer join when ratio of null join keys exceed the threshold",
                         0.02,
                         false),
+                new PropertyMetadata<>(
+                        SHARDED_JOINS_STRATEGY,
+                        format("When to shard joins to mitigate skew",
+                                Stream.of(ShardedJoinStrategy.values())
+                                        .map(ShardedJoinStrategy::name)
+                                        .collect(joining(","))),
+                        VARCHAR,
+                        ShardedJoinStrategy.class,
+                        featuresConfig.getShardedJoinStrategy(),
+                        false,
+                        value -> ShardedJoinStrategy.valueOf(((String) value).toUpperCase()),
+                        ShardedJoinStrategy::name),
+                integerProperty(
+                        JOIN_SHARD_COUNT,
+                        "Number of shards to use in sharded joins optimization",
+                        featuresConfig.getJoinShardCount(),
+                        true),
                 booleanProperty(
                         OPTIMIZE_CONDITIONAL_AGGREGATION_ENABLED,
                         "Enable rewriting IF(condition, AGG(x)) to AGG(x) with condition included in mask",
@@ -1628,6 +1648,11 @@ public final class SystemSessionProperties
                         "Rewrite cross join with array contains filter to inner join",
                         featuresConfig.isRewriteCrossJoinWithArrayContainsFilterToInnerJoin(),
                         false),
+                booleanProperty(
+                        REWRITE_CROSS_JOIN_ARRAY_NOT_CONTAINS_TO_ANTI_JOIN,
+                        "Rewrite cross join with array not contains filter to anti join",
+                        featuresConfig.isRewriteCrossJoinWithArrayNotContainsFilterToAntiJoin(),
+                        false),
                 new PropertyMetadata<>(
                         JOINS_NOT_NULL_INFERENCE_STRATEGY,
                         format("Set the strategy used NOT NULL filter inference on Join Nodes. Options are: %s",
@@ -1674,11 +1699,6 @@ public final class SystemSessionProperties
                         INFER_INEQUALITY_PREDICATES,
                         "Infer nonequality predicates for joins",
                         featuresConfig.getInferInequalityPredicates(),
-                        false),
-                booleanProperty(
-                        HANDLE_COMPLEX_EQUI_JOINS,
-                        "Handle complex equi-join conditions to open up join space for join reordering",
-                        featuresConfig.getHandleComplexEquiJoins(),
                         false));
     }
 
@@ -2722,7 +2742,15 @@ public final class SystemSessionProperties
     {
         return session.getSystemProperty(RANDOMIZE_OUTER_JOIN_NULL_KEY_NULL_RATIO_THRESHOLD, Double.class);
     }
+    public static ShardedJoinStrategy getShardedJoinStrategy(Session session)
+    {
+        return session.getSystemProperty(SHARDED_JOINS_STRATEGY, ShardedJoinStrategy.class);
+    }
 
+    public static int getJoinShardCount(Session session)
+    {
+        return session.getSystemProperty(JOIN_SHARD_COUNT, Integer.class);
+    }
     public static boolean isOptimizeConditionalAggregationEnabled(Session session)
     {
         return session.getSystemProperty(OPTIMIZE_CONDITIONAL_AGGREGATION_ENABLED, Boolean.class);
@@ -2793,6 +2821,11 @@ public final class SystemSessionProperties
         return session.getSystemProperty(REWRITE_CROSS_JOIN_ARRAY_CONTAINS_TO_INNER_JOIN, Boolean.class);
     }
 
+    public static boolean isRewriteCrossJoinArrayNotContainsToAntiJoinEnabled(Session session)
+    {
+        return session.getSystemProperty(REWRITE_CROSS_JOIN_ARRAY_NOT_CONTAINS_TO_ANTI_JOIN, Boolean.class);
+    }
+
     public static boolean isRewriteLeftJoinNullFilterToSemiJoinEnabled(Session session)
     {
         return session.getSystemProperty(REWRITE_LEFT_JOIN_NULL_FILTER_TO_SEMI_JOIN, Boolean.class);
@@ -2826,10 +2859,5 @@ public final class SystemSessionProperties
     public static boolean shouldInferInequalityPredicates(Session session)
     {
         return session.getSystemProperty(INFER_INEQUALITY_PREDICATES, Boolean.class);
-    }
-
-    public static boolean shouldHandleComplexEquiJoins(Session session)
-    {
-        return session.getSystemProperty(HANDLE_COMPLEX_EQUI_JOINS, Boolean.class);
     }
 }
