@@ -127,6 +127,37 @@ public class IcebergDistributedTestBase
     }
 
     @Test
+    public void testDeleteWithPartitionSpecEvolution()
+    {
+        // Create a partitioned table and insert some value
+        assertQuerySucceeds("create table test_delete(a int, b varchar) with (partitioning = ARRAY['a'])");
+        assertQuerySucceeds("insert into test_delete values(1, '1001'), (1, '1002'), (2, '1003')");
+        assertEquals(getQueryRunner().execute("SELECT count(*) FROM test_delete").getOnlyValue(), 3L);
+
+        // Rename partition column would not affect metadata deletion filtering by it's value
+        assertQuerySucceeds("alter table test_delete rename column a to c");
+        assertQuerySucceeds("insert into test_delete(c, b) values(2, '1004')");
+        assertUpdate("DELETE FROM test_delete WHERE c = 2", 2L);
+        assertEquals(getQueryRunner().execute("SELECT count(*) FROM test_delete").getOnlyValue(), 2L);
+
+        // Add a new partition column, and insert some value
+        assertQuerySucceeds("alter table test_delete add column d bigint with(partitioning = 'identity')");
+        assertQuerySucceeds("insert into test_delete values(1, '1001', 10001), (2, '1003', 10001), (3, '1004', 10003)");
+        assertEquals(getQueryRunner().execute("SELECT count(*) FROM test_delete").getOnlyValue(), 5L);
+
+        // Deletion fails, because column 'd' do not exists in older partition specs
+        String errorMessage = "This connector only supports delete where one or more partitions are deleted entirely";
+        assertQueryFails("delete from test_delete where d = 1001", errorMessage);
+        assertQueryFails("delete from test_delete where d = 1001 and c = 2", errorMessage);
+
+        // Deletion succeeds, because column 'c' exists in all partition specs
+        assertUpdate("DELETE FROM test_delete WHERE c = 1", 3);
+        assertEquals(getQueryRunner().execute("SELECT count(*) FROM test_delete").getOnlyValue(), 2L);
+
+        assertQuerySucceeds("DROP TABLE test_delete");
+    }
+
+    @Test
     public void testRenamePartitionColumn()
     {
         assertQuerySucceeds("create table test_partitioned_table(a int, b varchar) with (partitioning = ARRAY['a'])");
@@ -215,6 +246,23 @@ public class IcebergDistributedTestBase
         assertQueryFails("alter table add_partition_column add column a_bucket bigint with (partitioning = 'identity')", ignoreErrorMessage);
         assertQueryFails("alter table add_partition_column add column b varchar with (partitioning = 'truncate(2)')", ignoreErrorMessage);
         assertQuerySucceeds("DROP TABLE add_partition_column");
+    }
+
+    @Test
+    public void testDropPartitionColumn()
+    {
+        assertQuerySucceeds("create table test_drop_partition_column(a int, b varchar) with (partitioning = ARRAY['a'])");
+        assertQuerySucceeds("insert into test_drop_partition_column values(1, '1001'), (2, '1002'), (3, '1003')");
+        String errorMessage = "This connector does not support dropping columns which exist in any of the table's partition specs";
+        assertQueryFails("alter table test_drop_partition_column drop column a", errorMessage);
+        assertQuerySucceeds("DROP TABLE test_drop_partition_column");
+
+        assertQuerySucceeds("create table test_drop_partition_column(a int)");
+        assertQuerySucceeds("insert into test_drop_partition_column values 1, 2, 3");
+        assertQuerySucceeds("alter table test_drop_partition_column add column b varchar with (partitioning = 'identity')");
+        assertQuerySucceeds("insert into test_drop_partition_column values(4, '1004'), (5, '1005')");
+        assertQueryFails("alter table test_drop_partition_column drop column b", errorMessage);
+        assertQuerySucceeds("DROP TABLE test_drop_partition_column");
     }
 
     @Test
