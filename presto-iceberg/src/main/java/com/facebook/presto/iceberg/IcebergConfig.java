@@ -43,7 +43,9 @@ public class IcebergConfig
     private List<String> hadoopConfigResources = ImmutableList.of();
     private double minimumAssignedSplitWeight = 0.05;
     private boolean parquetDereferencePushdownEnabled = true;
-    private boolean mergeOnReadModeEnabled;
+    private boolean mergeOnReadModeEnabled = true;
+    private double statisticSnapshotRecordDifferenceWeight;
+    private boolean pushdownFilterEnabled;
 
     private HiveStatisticsMergeStrategy hiveStatisticsMergeStrategy = HiveStatisticsMergeStrategy.NONE;
 
@@ -195,5 +197,33 @@ public class IcebergConfig
     public HiveStatisticsMergeStrategy getHiveStatisticsMergeStrategy()
     {
         return hiveStatisticsMergeStrategy;
+    }
+
+    @Config("iceberg.statistic-snapshot-record-difference-weight")
+    @ConfigDescription("the amount that the difference in total record count matters when " +
+            "calculating the closest snapshot when picking statistics. A value of 1 means a single " +
+            "record is equivalent to 1 millisecond of time difference.")
+    public IcebergConfig setStatisticSnapshotRecordDifferenceWeight(double weight)
+    {
+        this.statisticSnapshotRecordDifferenceWeight = weight;
+        return this;
+    }
+
+    public double getStatisticSnapshotRecordDifferenceWeight()
+    {
+        return statisticSnapshotRecordDifferenceWeight;
+    }
+
+    @Config("iceberg.pushdown-filter-enabled")
+    @ConfigDescription("Experimental: Enable filter pushdown for Iceberg. This is only supported with Native Worker.")
+    public IcebergConfig setPushdownFilterEnabled(boolean pushdownFilterEnabled)
+    {
+        this.pushdownFilterEnabled = pushdownFilterEnabled;
+        return this;
+    }
+
+    public boolean isPushdownFilterEnabled()
+    {
+        return pushdownFilterEnabled;
     }
 }

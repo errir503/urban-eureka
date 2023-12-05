@@ -49,7 +49,7 @@ Nessie catalog
 ^^^^^^^^^^^^^^
 
 To use a Nessie catalog, configure the catalog type as
-``iceberg.catalog.type=nessie``
+``iceberg.catalog.type=nessie``.
 
 .. code-block:: none
 
@@ -71,6 +71,9 @@ Property Name                                        Description
 ``iceberg.nessie.auth.type``                         The authentication type to use.
                                                      Available values are ``BASIC`` or ``BEARER``.
                                                      Example: ``BEARER``
+
+                                                     **Note:** Nessie BASIC authentication type is deprecated,
+                                                     this will be removed in upcoming release
 
 ``iceberg.nessie.auth.basic.username``               The username to use with ``BASIC`` authentication.
                                                      Example: ``test_user``
@@ -123,7 +126,7 @@ For more information about this configuration option and other related options, 
 
 For more information about troubleshooting OpenTelemetry traces, see `Troubleshooting traces <https://projectnessie.org/try/configuration/#troubleshooting-traces>`_.
 
-If an error similar to the following example is displayed, this is probably because you are interacting with an http server, and not https server. You need to set ``iceberg.nessie.uri`` to ``http://localhost:19120/api/v1``.
+If an error similar to the following example is displayed, this is probably because you are interacting with an http server, and not an https server. You need to set ``iceberg.nessie.uri`` to ``http://localhost:19120/api/v1``.
 
 .. code-block:: none
 
@@ -145,7 +148,8 @@ If an error similar to the following example is displayed, this is probably beca
 Hadoop catalog
 ^^^^^^^^^^^^^^
 
-Iceberg connector supports Hadoop catalog
+To use a Hadoop catalog, configure the catalog type as
+``iceberg.catalog.type=hadoop``
 
 .. code-block:: none
 
@@ -210,10 +214,8 @@ Property Name                                      Description                  
                                                    improve performance for queries with highly skewed
                                                    aggregations or joins.
 
-``iceberg.enable-merge-on-read-mode``              Enable reading base tables that use merge-on-read for          ``false``
-                                                   updates. The Iceberg connector currently does not read
-                                                   delete lists, which means any updates will not be
-                                                   reflected in the table.
+``iceberg.enable-merge-on-read-mode``              Enable reading base tables that use merge-on-read for          ``true``
+                                                   updates.
 ================================================== ============================================================= ============
 
 Table Properties
@@ -302,7 +304,7 @@ as a part of a SQL query by appending name to the table.
 
 ``$snapshots`` Table
 ^^^^^^^^^^^^^^^^^^^^
-* ``$snapshots`` : Details about the table snapshots, see the details `here <https://iceberg.apache.org/spec/#snapshots>`_.
+* ``$snapshots`` : Details about the table snapshots. For more information see `Snapshots <https://iceberg.apache.org/spec/#snapshots>`_ in the Iceberg Table Spec.
 .. code-block:: sql
 
     SELECT * FROM "ctas_nation$snapshots";
@@ -315,7 +317,7 @@ as a part of a SQL query by appending name to the table.
 
 ``$manifests`` Table
 ^^^^^^^^^^^^^^^^^^^^
-* ``$manifests`` : Details about the manifests of different table snapshots, see the details `here <https://iceberg.apache.org/spec/#manifests>`_.
+* ``$manifests`` : Details about the manifests of different table snapshots. For more information see `Manifests <https://iceberg.apache.org/spec/#manifests>`_ in the Iceberg Table Spec.
 .. code-block:: sql
 
     SELECT * FROM "ctas_nation$manifests";
@@ -356,12 +358,12 @@ SQL Support
 -----------
 
 The Iceberg connector supports querying and manipulating Iceberg tables and schemas
-(databases). Here are some examples of the SQL operations supported by Presto :
+(databases). Here are some examples of the SQL operations supported by Presto:
 
 CREATE SCHEMA
 ^^^^^^^^^^^^^^
 
-Create a new Iceberg schema named ``web`` that will store tables in an
+Create a new Iceberg schema named ``web`` that stores tables in an
 S3 bucket named ``my-bucket``::
 
     CREATE SCHEMA iceberg.web
@@ -479,7 +481,7 @@ SELECT table operations are supported for Iceberg format version 1 and version 2
 ALTER TABLE
 ^^^^^^^^^^^^
 
-Alter table operations are supported in the connector::
+Alter table operations are supported in the Iceberg connector::
 
      ALTER TABLE iceberg.web.page_views ADD COLUMN zipcode VARCHAR;
 
@@ -503,7 +505,7 @@ The table is partitioned by the transformed value of the column::
 TRUNCATE
 ^^^^^^^^
 
-The iceberg connector can delete all of the data from tables without
+The Iceberg connector can delete all of the data from tables without
 dropping the table from the metadata catalog using ``TRUNCATE TABLE``.
 
 .. code-block:: sql
@@ -527,7 +529,7 @@ dropping the table from the metadata catalog using ``TRUNCATE TABLE``.
 DELETE
 ^^^^^^^^
 
-The iceberg connector can delete data in one or more entire partitions from tables by using ``DELETE FROM``. For example, to delete from the table ``lineitem``::
+The Iceberg connector can delete data in one or more entire partitions from tables by using ``DELETE FROM``. For example, to delete from the table ``lineitem``::
 
      DELETE FROM lineitem;
 
@@ -563,14 +565,14 @@ Drop the view ``view_page_views``::
 DROP SCHEMA
 ^^^^^^^^^^^^
 
-Drop a schema::
+Drop the schema ``iceberg.web``::
 
     DROP SCHEMA iceberg.web
 
 Schema Evolution
 -----------------
 
-Iceberg and Presto Iceberg connector support in-place table evolution, aka
+Iceberg and Presto Iceberg connector support in-place table evolution, also known as
 schema evolution, such as adding, dropping, and renaming columns. With schema
 evolution, users can evolve a table schema with SQL after enabling the Presto
 Iceberg connector.
@@ -657,13 +659,15 @@ Time Travel
 
 Iceberg and Presto Iceberg connector support time travel via table snapshots
 identified by unique snapshot IDs. The snapshot IDs are stored in the ``$snapshots``
-metadata table. We can rollback the state of a table to a previous snapshot ID.
+metadata table. You can rollback the state of a table to a previous snapshot ID.
+It also supports time travel query using VERSION (SYSTEM_VERSION) and TIMESTAMP (SYSTEM_TIME) options.
 
 Example Queries
 ^^^^^^^^^^^^^^^
 
-Similar to the example queries in `Schema Evolution`, let's create an Iceberg
-table named `ctas_nation`, created from the TPCH `nation` table.
+Similar to the example queries in `SCHEMA EVOLUTION`_, create an Iceberg
+table named `ctas_nation` from the TPCH `nation` table::
+
 
 .. code-block:: sql
 
@@ -744,8 +748,80 @@ exists as we've rolled back to the previous state.
     -----------+------+-----------+---------
     (0 rows)
 
-Iceberg Connector Limitations
------------------------------
+Time Travel using VERSION (SYSTEM_VERSION) and TIMESTAMP (SYSTEM_TIME)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-* The ``SELECT`` operations on Iceberg Tables with format version 2 do not read the delete files
-  and remove the deleted rows as of now (:issue:`20492`).
+Use the Iceberg connector to access the historical data of a table.
+You can see how the table looked like at a certain point in time,
+even if the data has changed or been deleted since then.
+
+.. code-block:: sql
+
+    // snapshot ID 5300424205832769799
+    INSERT INTO ctas_nation VALUES(10, 'united states', 1, 'comment');
+
+    // snapshot ID 6891257133877048303
+    INSERT INTO ctas_nation VALUES(20, 'canada', 2, 'comment');
+
+    // snapshot ID 705548372863208787
+    INSERT INTO ctas_nation VALUES(30, 'mexico', 3, 'comment');
+
+    // snapshot ID for first record
+    SELECT * FROM ctas_nation FOR VERSION AS OF 5300424205832769799;
+
+    // snapshot ID for first record using SYSTEM_VERSION
+    SELECT * FROM ctas_nation FOR SYSTEM_VERSION AS OF 5300424205832769799;
+
+.. code-block:: text
+
+     nationkey |      name     | regionkey | comment
+    -----------+---------------+-----------+---------
+            10 | united states |         1 | comment
+    (1 row)
+
+In above example, SYSTEM_VERSION can be used as an alias for VERSION.
+
+You can access the historical data of a table using FOR TIMESTAMP AS OF TIMESTAMP.
+The query returns the table’s state using the table snapshot that is closest to the specified timestamp.
+In this example, SYSTEM_TIME can be used as an alias for TIMESTAMP.
+
+.. code-block:: sql
+
+    // In following query, timestamp string is matching with second inserted record.
+    SELECT * FROM ctas_nation FOR TIMESTAMP AS OF TIMESTAMP '2023-10-17 13:29:46.822 America/Los_Angeles';
+
+    // Same example using SYSTEM_TIME as an alias for TIMESTAMP
+    SELECT * FROM ctas_nation FOR SYSTEM_TIME AS OF TIMESTAMP '2023-10-17 13:29:46.822 America/Los_Angeles';
+
+.. code-block:: text
+
+     nationkey |      name     | regionkey | comment
+    -----------+---------------+-----------+---------
+            10 | united states |         1 | comment
+            20 | canada        |         2 | comment
+    (2 rows)
+
+The option following FOR TIMESTAMP AS OF can accept any expression that returns a timestamp with time zone value.
+For example, `TIMESTAMP '2023-10-17 13:29:46.822 America/Los_Angeles'` is a constant string for the expression.
+In the following query, the expression CURRENT_TIMESTAMP returns the current timestamp with time zone value.
+
+.. code-block:: sql
+
+    SELECT * FROM ctas_nation FOR TIMESTAMP AS OF CURRENT_TIMESTAMP;
+
+.. code-block:: text
+
+     nationkey |      name     | regionkey | comment
+    -----------+---------------+-----------+---------
+            10 | united states |         1 | comment
+            20 | canada        |         2 | comment
+            30 | mexico        |         3 | comment
+    (3 rows)
+
+Table with delete files
+-----------------------
+
+Iceberg V2 tables support row-level deletion. For more information see
+`Row-level deletes <https://iceberg.apache.org/spec/#row-level-deletes>`_ in the Iceberg Table Spec.
+Presto supports reading delete files, including Position Delete Files and Equality Delete Files.
+When reading, Presto merges these delete files to read the latest results.
