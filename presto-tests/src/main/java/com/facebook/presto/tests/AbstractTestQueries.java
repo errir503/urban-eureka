@@ -53,6 +53,7 @@ import java.util.stream.IntStream;
 import static com.facebook.presto.SystemSessionProperties.ADD_PARTIAL_NODE_FOR_ROW_NUMBER_WITH_LIMIT;
 import static com.facebook.presto.SystemSessionProperties.ENABLE_INTERMEDIATE_AGGREGATIONS;
 import static com.facebook.presto.SystemSessionProperties.FIELD_NAMES_IN_JSON_CAST_ENABLED;
+import static com.facebook.presto.SystemSessionProperties.GENERATE_DOMAIN_FILTERS;
 import static com.facebook.presto.SystemSessionProperties.HASH_PARTITION_COUNT;
 import static com.facebook.presto.SystemSessionProperties.KEY_BASED_SAMPLING_ENABLED;
 import static com.facebook.presto.SystemSessionProperties.KEY_BASED_SAMPLING_FUNCTION;
@@ -7266,6 +7267,11 @@ public abstract class AbstractTestQueries
                 "values ('+1')");
         assertQuery(session, "select transform(col1, x -> if(x, col2[2], 0)) from (values (array[false], array[0])) t(col1, col2)", "values array[0]");
         assertQuery(session, "select transform(arr1, x -> arr2[2]) from (values (array[], array[0])) t(arr1, arr2)", "values array[]");
+        assertQuery(session, "SELECT ANY_MATCH(a, x -> (x LIKE CONCAT('a', b))) AS rejected_by_control_model, FILTER(a, x -> x LIKE CONCAT('a', b)) FROM ( SELECT ARRAY[CAST(random() AS VARCHAR)] a, CAST(random() AS VARCHAR) AS b )", "values (false, array[])");
+        assertQuery(session, "SELECT ANY_MATCH(a, x -> regexp_like(x, CONCAT('a', b))) AS rejected_by_control_model, FILTER(a, x -> regexp_like(x, CONCAT('a', b))) FROM ( SELECT ARRAY[CAST(random() AS VARCHAR)] a, CAST(random() AS VARCHAR) AS b )", "values (false, array[])");
+        assertQuery(session, "SELECT ANY_MATCH(a, x -> (x LIKE CONCAT('a', b))) AS rejected_by_control_model, FILTER(a, x -> x LIKE CONCAT('a', b)) FROM ( SELECT ARRAY[CAST(random() AS VARCHAR)] a, CAST(1 AS VARCHAR) AS b )", "values (false, array[])");
+        assertQuery(session, "SELECT ANY_MATCH(a, x -> regexp_like(x, CONCAT('a', b))) AS rejected_by_control_model, FILTER(a, x -> regexp_like(x, CONCAT('a', b))) FROM ( SELECT ARRAY[CAST(random() AS VARCHAR)] a, CAST(1 AS VARCHAR) AS b )", "values (false, array[])");
+        assertQuery(session, "SELECT ANY_MATCH(a, x -> (x LIKE CONCAT('a', b))) AS rejected_by_control_model, FILTER(a, x -> x LIKE CONCAT('a', b) ESCAPE '#') FROM ( SELECT ARRAY[CAST(random() AS VARCHAR)] a, CAST(random() AS VARCHAR) AS b )", "values (false, array[])");
     }
 
     @Test
@@ -7295,6 +7301,32 @@ public abstract class AbstractTestQueries
         assertQuery(session, "select r.custkey, r.orderkey, r.name, n.nationkey from (select o.custkey, o.orderkey, c.name from orders o join customer c on cast(o.custkey as varchar) = cast(c.custkey as varchar)) r, nation n");
         // Do not trigger optimization
         assertQuery(session, "select * from customer c join orders o on cast(acctbal as varchar) = cast(totalprice as varchar)");
+    }
+
+    @Test
+    public void testGenerateDomainFilters()
+    {
+        Session session = Session.builder(getSession())
+                .setSystemProperty(GENERATE_DOMAIN_FILTERS, "true")
+                .build();
+
+        //Inner Join, domain predicates for both sides of Join inferred
+        assertQuery(session, "select s.acctbal, n.name from supplier s inner join nation n on s.nationkey = n.nationkey " +
+                "where (n.name = 'INDIA' AND s.acctbal BETWEEN 10 AND 5000) OR" +
+                " (n.name = 'CANADA' AND s.acctbal BETWEEN 5001 AND 8000) OR" +
+                " (n.name = 'ARGENTINA' AND s.acctbal > 8001)");
+
+        //Outer Join, domain predicates for both sides of Join inferred since NULL is not inferred for inner side of join
+        assertQuery(session, "select s.acctbal, n.name from supplier s left join nation n on s.nationkey = n.nationkey " +
+                "where (n.name = 'INDIA' AND s.acctbal BETWEEN 10 AND 5000) OR" +
+                " (n.name = 'CANADA' AND s.acctbal BETWEEN 5001 AND 8000) OR" +
+                " (n.name = 'ARGENTINA' AND s.acctbal > 8001)");
+
+        //Outer Join, domain predicate inferred only for outer side of join since NULL domain is inferred for `n.name`
+        assertQuery(session, "select s.acctbal, n.name from supplier s left join nation n on s.nationkey = n.nationkey " +
+                "where (n.name = 'INDIA' AND s.acctbal BETWEEN 10 AND 5000) OR" +
+                " (n.name = 'CANADA' AND s.acctbal BETWEEN 5001 AND 8000) OR" +
+                " (n.name IS NULL AND s.acctbal > 8001)");
     }
 
     @Test
