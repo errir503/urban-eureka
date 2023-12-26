@@ -19,7 +19,6 @@ import com.facebook.airlift.log.Logger;
 import com.facebook.presto.Session;
 import com.facebook.presto.SystemSessionProperties;
 import com.facebook.presto.client.ServerInfo;
-import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.server.RequestErrorTracker;
 import com.facebook.presto.server.smile.BaseResponse;
 import com.facebook.presto.spark.classloader_interface.PrestoSparkFatalException;
@@ -77,7 +76,6 @@ public class NativeExecutionProcess
     private final PrestoSparkHttpServerClient serverClient;
     private final URI location;
     private final int port;
-    private final TaskManagerConfig taskManagerConfig;
     private final ScheduledExecutorService errorRetryScheduledExecutor;
     private final RequestErrorTracker errorTracker;
     private final HttpClient httpClient;
@@ -92,7 +90,6 @@ public class NativeExecutionProcess
             ScheduledExecutorService errorRetryScheduledExecutor,
             JsonCodec<ServerInfo> serverInfoCodec,
             Duration maxErrorDuration,
-            TaskManagerConfig taskManagerConfig,
             WorkerProperty<?, ?, ?, ?> workerProperty)
             throws IOException
     {
@@ -104,7 +101,6 @@ public class NativeExecutionProcess
                 this.httpClient,
                 location,
                 serverInfoCodec);
-        this.taskManagerConfig = requireNonNull(taskManagerConfig, "taskManagerConfig is null");
         this.errorRetryScheduledExecutor = requireNonNull(errorRetryScheduledExecutor, "errorRetryScheduledExecutor is null");
         this.errorTracker = new RequestErrorTracker(
                 "NativeExecution",
@@ -123,7 +119,7 @@ public class NativeExecutionProcess
     public synchronized void start()
             throws ExecutionException, InterruptedException, IOException
     {
-        if (process != null && process.isAlive()) {
+        if (process != null) {
             return;
         }
 
@@ -212,7 +208,12 @@ public class NativeExecutionProcess
     @Override
     public void close()
     {
-        if (process != null && process.isAlive()) {
+        Process process = this.process;
+        if (process == null) {
+            return;
+        }
+
+        if (process.isAlive()) {
             long pid = getPid(process);
             log.info("Destroying process: %s", pid);
             process.destroy();
@@ -234,9 +235,8 @@ public class NativeExecutionProcess
                 }
             }
         }
-        else if (process != null) {
+        else {
             log.info("Process is dead: %s", getPid(process));
-            process = null;
         }
     }
 
@@ -380,7 +380,7 @@ public class NativeExecutionProcess
             populateConfigurationFiles(configPath);
         }
         ImmutableList<String> commandList = command.build();
-        log.info("Launching native process using command: %s %s", executablePath, String.join(" ", commandList));
+        log.info("Launching native process using command: %s", String.join(" ", commandList));
         return commandList;
     }
 }
