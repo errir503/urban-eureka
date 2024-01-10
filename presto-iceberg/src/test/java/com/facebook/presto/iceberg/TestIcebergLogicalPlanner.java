@@ -69,8 +69,8 @@ import static com.facebook.presto.common.type.DoubleType.DOUBLE;
 import static com.facebook.presto.common.type.IntegerType.INTEGER;
 import static com.facebook.presto.common.type.VarcharType.VARCHAR;
 import static com.facebook.presto.expressions.LogicalRowExpressions.TRUE_CONSTANT;
+import static com.facebook.presto.hive.BaseHiveColumnHandle.ColumnType.SYNTHESIZED;
 import static com.facebook.presto.iceberg.IcebergAbstractMetadata.isEntireColumn;
-import static com.facebook.presto.iceberg.IcebergColumnHandle.ColumnType.SYNTHESIZED;
 import static com.facebook.presto.iceberg.IcebergColumnHandle.getSynthesizedIcebergColumnHandle;
 import static com.facebook.presto.iceberg.IcebergColumnHandle.isPushedDownSubfield;
 import static com.facebook.presto.iceberg.IcebergQueryRunner.ICEBERG_CATALOG;
@@ -690,7 +690,7 @@ public class TestIcebergLogicalPlanner
 
     private static boolean isTableScanNode(PlanNode node, String tableName)
     {
-        return node instanceof TableScanNode && ((IcebergTableHandle) ((TableScanNode) node).getTable().getConnectorHandle()).getTableName().getTableName().equals(tableName);
+        return node instanceof TableScanNode && ((IcebergTableHandle) ((TableScanNode) node).getTable().getConnectorHandle()).getIcebergTableName().getTableName().equals(tableName);
     }
 
     private Session pushdownFilterEnabled()

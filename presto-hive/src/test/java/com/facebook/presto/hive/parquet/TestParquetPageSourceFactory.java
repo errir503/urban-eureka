@@ -13,69 +13,111 @@
  */
 package com.facebook.presto.hive.parquet;
 
-import com.facebook.presto.common.type.TestingTypeManager;
-import com.facebook.presto.hive.FileFormatDataSourceStats;
-import com.facebook.presto.hive.HdfsConfigurationInitializer;
-import com.facebook.presto.hive.HdfsEnvironment;
-import com.facebook.presto.hive.HiveClientConfig;
-import com.facebook.presto.hive.HiveHdfsConfiguration;
-import com.facebook.presto.hive.MetastoreClientConfig;
-import com.facebook.presto.hive.authentication.NoHdfsAuthentication;
-import com.facebook.presto.hive.metastore.Storage;
-import com.facebook.presto.hive.metastore.StorageFormat;
-import com.facebook.presto.parquet.cache.MetadataReader;
-import com.facebook.presto.spi.ConnectorPageSource;
-import com.facebook.presto.spi.function.StandardFunctionResolution;
-import com.facebook.presto.sql.relational.FunctionResolution;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hudi.hadoop.realtime.HoodieParquetRealtimeInputFormat;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
+import com.facebook.presto.common.Subfield;
+import com.facebook.presto.common.type.VarcharType;
+import com.facebook.presto.hive.HiveColumnHandle;
+import com.facebook.presto.hive.HiveType;
+import com.facebook.presto.spi.SchemaTableName;
+import com.google.common.collect.ImmutableList;
+import org.apache.hadoop.fs.Path;
+import org.apache.parquet.schema.GroupType;
+import org.apache.parquet.schema.MessageType;
+import org.apache.parquet.schema.PrimitiveType;
 import org.testng.annotations.Test;
 
 import java.util.Optional;
 
-import static com.facebook.presto.hive.HiveTestUtils.METADATA;
-import static org.testng.Assert.assertFalse;
+import static com.facebook.presto.hive.BaseHiveColumnHandle.ColumnType.REGULAR;
+import static com.facebook.presto.hive.BaseHiveColumnHandle.ColumnType.SYNTHESIZED;
+import static com.facebook.presto.hive.parquet.ParquetPageSourceFactory.getColumnType;
+import static org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.BINARY;
+import static org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.INT32;
+import static org.apache.parquet.schema.Type.Repetition.REQUIRED;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 public class TestParquetPageSourceFactory
 {
-    private static final String PARQUET_HIVE_SERDE = "parquet.hive.serde.ParquetHiveSerDe";
-
-    private ParquetPageSourceFactory parquetPageSourceFactory;
-    private final StandardFunctionResolution functionResolution = new FunctionResolution(METADATA.getFunctionAndTypeManager());
-
-    @BeforeClass
-    public void setUp()
-    {
-        HiveHdfsConfiguration hiveHdfsConfiguration = new HiveHdfsConfiguration(new HdfsConfigurationInitializer(new HiveClientConfig(), new MetastoreClientConfig()), ImmutableSet.of());
-        HdfsEnvironment hdfsEnvironment = new HdfsEnvironment(hiveHdfsConfiguration, new MetastoreClientConfig(), new NoHdfsAuthentication());
-        parquetPageSourceFactory = new ParquetPageSourceFactory(new TestingTypeManager(), functionResolution, hdfsEnvironment, new FileFormatDataSourceStats(), new MetadataReader());
-    }
-
-    @AfterClass(alwaysRun = true)
-    public void cleanUp()
-    {
-        parquetPageSourceFactory = null;
-    }
-
     @Test
-    public void testCreatePageSourceEmptyWithoutParquetSerDe()
+    public void testGetColumnType()
     {
-        StorageFormat storageFormat = StorageFormat.create("random.test.serde", "random.test.inputformat", "");
-        Storage storage = new Storage(storageFormat, "test", Optional.empty(), true, ImmutableMap.of(), ImmutableMap.of());
-        Optional<? extends ConnectorPageSource> optionalPageSource = parquetPageSourceFactory.createPageSource(new Configuration(), null, null, 0L, 0L, 0L, storage, null, null, null, null, null, null, Optional.empty());
-        assertFalse(optionalPageSource.isPresent());
+        MessageType messageType = buildMessageType();
+        SchemaTableName tableName = new SchemaTableName("db001", "tbl001");
+        Path path = new Path("/tmp/hello");
+
+        // Simple field by index.
+        Optional<org.apache.parquet.schema.Type> parquetType = getColumnType(VarcharType.VARCHAR, messageType, false,
+                buildSimpleColumnHandle("name", 0), tableName, path);
+        PrimitiveType expectedNameType = new PrimitiveType(REQUIRED, BINARY, "name");
+        assertTrue(parquetType.isPresent());
+        assertEquals(
+                parquetType.get(), expectedNameType);
+
+        // Simple field by name.
+        parquetType = getColumnType(VarcharType.VARCHAR, messageType, true,
+                buildSimpleColumnHandle("name", 0), tableName, path);
+        assertTrue(parquetType.isPresent());
+        assertEquals(
+                parquetType.get(), expectedNameType);
+
+        // Pushdown fields with useParquetColumnNames = false.
+        HiveColumnHandle addressCityColumn = buildNestedPushDownColumnHandle("address", "city");
+        parquetType = getColumnType(VarcharType.VARCHAR, messageType, false,
+                addressCityColumn, tableName, path);
+
+        PrimitiveType city = new PrimitiveType(REQUIRED, BINARY, "city");
+        MessageType expectedAddressWithCityType = new MessageType("address", ImmutableList.of(city));
+
+        assertTrue(parquetType.isPresent());
+        assertEquals(
+                parquetType.get(), expectedAddressWithCityType);
+
+        // Pushdown fields with useParquetColumnNames = true.
+        parquetType = getColumnType(VarcharType.VARCHAR, messageType, true,
+                addressCityColumn, tableName, path);
+        assertTrue(parquetType.isPresent());
+        assertEquals(
+                parquetType.get(), expectedAddressWithCityType);
     }
 
-    @Test
-    public void testCreatePageSourceEmptyWithParquetSerDeAndAnnotation()
+    private static HiveColumnHandle buildSimpleColumnHandle(String name, int index)
     {
-        StorageFormat storageFormat = StorageFormat.create(PARQUET_HIVE_SERDE, HoodieParquetRealtimeInputFormat.class.getName(), "");
-        Storage storage = new Storage(storageFormat, "test", Optional.empty(), true, ImmutableMap.of(), ImmutableMap.of());
-        Optional<? extends ConnectorPageSource> optionalPageSource = parquetPageSourceFactory.createPageSource(new Configuration(), null, null, 0L, 0L, 0L, storage, null, null, null, null, null, null, Optional.empty());
-        assertFalse(optionalPageSource.isPresent());
+        HiveColumnHandle column = new HiveColumnHandle(
+                name,
+                HiveType.HIVE_STRING,
+                VarcharType.VARCHAR.getTypeSignature(),
+                index,
+                REGULAR,
+                Optional.empty(),
+                ImmutableList.of(),
+                Optional.empty());
+        return column;
+    }
+
+    private static HiveColumnHandle buildNestedPushDownColumnHandle(String field1, String field2)
+    {
+        Subfield subfield = new Subfield(field1, ImmutableList.of(new Subfield.NestedField(field2)));
+        HiveColumnHandle column = new HiveColumnHandle(
+                String.format("%s$_$_$%s", field1, field2),
+                HiveType.HIVE_STRING,
+                VarcharType.VARCHAR.getTypeSignature(),
+                -1,
+                SYNTHESIZED,
+                Optional.of("nested column pushdown"),
+                ImmutableList.of(subfield),
+                Optional.empty());
+        return column;
+    }
+
+    private static MessageType buildMessageType()
+    {
+        PrimitiveType name = new PrimitiveType(REQUIRED, BINARY, "name");
+        PrimitiveType age = new PrimitiveType(REQUIRED, INT32, "age");
+
+        PrimitiveType city = new PrimitiveType(REQUIRED, BINARY, "city");
+        PrimitiveType block = new PrimitiveType(REQUIRED, BINARY, "block");
+        GroupType address = new GroupType(REQUIRED, "address", ImmutableList.of(city, block));
+        MessageType messageType = new MessageType("root", ImmutableList.of(name, age, address));
+        return messageType;
     }
 }

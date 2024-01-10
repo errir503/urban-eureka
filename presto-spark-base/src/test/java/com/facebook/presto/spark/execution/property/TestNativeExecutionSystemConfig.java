@@ -42,7 +42,8 @@ public class TestNativeExecutionSystemConfig
                 .setSpillEnabled(true)
                 .setAggregationSpillEnabled(true)
                 .setJoinSpillEnabled(true)
-                .setOrderBySpillEnabled(true));
+                .setOrderBySpillEnabled(true)
+                .setMaxSpillBytes(500L << 30));
 
         // Test explicit property mapping. Also makes sure properties returned by getAllProperties() covers full property list.
         NativeExecutionVeloxConfig expected = new NativeExecutionVeloxConfig()
@@ -50,7 +51,8 @@ public class TestNativeExecutionSystemConfig
                 .setSpillEnabled(false)
                 .setAggregationSpillEnabled(false)
                 .setJoinSpillEnabled(false)
-                .setOrderBySpillEnabled(false);
+                .setOrderBySpillEnabled(false)
+                .setMaxSpillBytes(1L);
         Map<String, String> properties = expected.getAllProperties();
         assertFullMapping(properties, expected);
     }
@@ -83,6 +85,7 @@ public class TestNativeExecutionSystemConfig
                 .setMemoryArbitratorCapacityGb(8)
                 .setMemoryPoolInitCapacity(8L << 30)
                 .setMemoryPoolTransferCapacity(2L << 30)
+                .setMemoryReclaimWaitMs(300_000)
                 .setSpillerSpillPath("")
                 .setConcurrentLifespansPerTask(5)
                 .setMaxDriversPerTask(15)
@@ -120,6 +123,7 @@ public class TestNativeExecutionSystemConfig
                 .setMemoryArbitratorCapacityGb(10)
                 .setMemoryPoolInitCapacity(7L << 30)
                 .setMemoryPoolTransferCapacity(1L << 30)
+                .setMemoryReclaimWaitMs(123123123)
                 .setSpillerSpillPath("dummy.spill.path")
                 .setMaxDriversPerTask(30)
                 .setOldTaskCleanupMs(true)
