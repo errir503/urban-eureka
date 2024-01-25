@@ -216,6 +216,9 @@ Property Name                                      Description                  
 
 ``iceberg.enable-merge-on-read-mode``              Enable reading base tables that use merge-on-read for          ``true``
                                                    updates.
+
+``iceberg.delete-as-join-rewrite-enabled``         When enabled, equality delete row filtering is applied        ``true``
+                                                   as a join with the data of the equality delete files.
 ================================================== ============================================================= ============
 
 Table Properties
@@ -268,6 +271,18 @@ and a file system location of ``s3://test_bucket/test_schema/test_table``:
         partitioning = ARRAY['c1', 'c2'],
         location = 's3://test_bucket/test_schema/test_table')
     )
+
+Session Properties
+-------------------
+
+Session properties set behavior changes for queries executed within the given session.
+
+============================================= ======================================================================
+Property Name                                 Description
+============================================= ======================================================================
+``iceberg.delete_as_join_rewrite_enabled``    Overrides the behavior of the connector property
+                                              ``iceberg.delete-as-join-rewrite-enabled`` in the current session.
+============================================= ======================================================================
 
 Caching Support
 ----------------
@@ -372,6 +387,38 @@ Metastore cache only caches schema and table names. Other metadata would be fetc
     hive.metastore-cache-ttl=2d
     hive.metastore-refresh-interval=3d
     hive.metastore-cache-maximum-size=10000000
+
+Extra Hidden Metadata Columns
+----------------------------
+
+The Iceberg connector exposes extra hidden metadata columns. You can query these
+as part of a SQL query by including them in your SELECT statement.
+
+``$path`` column
+^^^^^^^^^^^^^^^^
+* ``$path``: Full file system path name of the file for this row
+.. code-block:: sql
+
+    SELECT "$path", regionkey FROM "ctas_nation";
+
+.. code-block:: text
+
+             $path                    |  regionkey
+     ---------------------------------+-----------
+      /full/path/to/file/file.parquet | 2
+
+``$data_sequence_number`` column
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+* ``$data_sequence_number``: The Iceberg data sequence number in which this row was added
+.. code-block:: sql
+
+    SELECT "$data_sequence_number", regionkey FROM "ctas_nation";
+
+.. code-block:: text
+
+             $data_sequence_number     |  regionkey
+     ----------------------------------+------------
+                  2                    | 3
 
 Extra Hidden Metadata Tables
 ----------------------------
