@@ -47,19 +47,21 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.lang.reflect.Field;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.facebook.airlift.http.client.HttpStatus.OK;
-import static com.facebook.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
+import static com.facebook.airlift.http.client.HttpUriBuilder.uriBuilder;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.NATIVE_EXECUTION_BINARY_NOT_EXIST;
 import static com.facebook.presto.spi.StandardErrorCode.NATIVE_EXECUTION_PROCESS_LAUNCH_ERROR;
@@ -87,7 +89,7 @@ public class NativeExecutionProcess
     private final PrestoSparkHttpServerClient serverClient;
     private final URI location;
     private final int port;
-    private final ScheduledExecutorService errorRetryScheduledExecutor;
+    private final Executor executor;
     private final RequestErrorTracker errorTracker;
     private final HttpClient httpClient;
     private final WorkerProperty<?, ?, ?, ?> workerProperty;
@@ -97,30 +99,35 @@ public class NativeExecutionProcess
 
     public NativeExecutionProcess(
             Session session,
-            URI uri,
             HttpClient httpClient,
-            ScheduledExecutorService errorRetryScheduledExecutor,
+            Executor executor,
+            ScheduledExecutorService scheduledExecutorService,
             JsonCodec<ServerInfo> serverInfoCodec,
             Duration maxErrorDuration,
             WorkerProperty<?, ?, ?, ?> workerProperty)
             throws IOException
     {
-        this.port = getAvailableTcpPort();
+        String nodeInternalAddress = workerProperty.getNodeConfig().getNodeInternalAddress();
+        this.port = getAvailableTcpPort(nodeInternalAddress);
         this.session = requireNonNull(session, "session is null");
-        this.location = getBaseUriWithPort(requireNonNull(uri, "uri is null"), getPort());
+        this.location = uriBuilder()
+                .scheme("http")
+                .host(nodeInternalAddress)
+                .port(getPort())
+                .build();
         this.httpClient = requireNonNull(httpClient, "httpClient is null");
         this.serverClient = new PrestoSparkHttpServerClient(
                 this.httpClient,
                 location,
                 serverInfoCodec);
-        this.errorRetryScheduledExecutor = requireNonNull(errorRetryScheduledExecutor, "errorRetryScheduledExecutor is null");
+        this.executor = requireNonNull(executor, "executor is null");
         this.errorTracker = new RequestErrorTracker(
                 "NativeExecution",
-                uri,
+                location,
                 NATIVE_EXECUTION_TASK_ERROR,
                 NATIVE_EXECUTION_TASK_ERROR_MESSAGE,
                 maxErrorDuration,
-                errorRetryScheduledExecutor,
+                scheduledExecutorService,
                 "getting native process status");
         this.workerProperty = requireNonNull(workerProperty, "workerProperty is null");
     }
@@ -301,17 +308,11 @@ public class NativeExecutionProcess
         return location;
     }
 
-    private static URI getBaseUriWithPort(URI baseUri, int port)
-    {
-        return uriBuilderFrom(baseUri)
-                .port(port)
-                .build();
-    }
-
-    private static int getAvailableTcpPort()
+    private static int getAvailableTcpPort(String nodeInternalAddress)
     {
         try {
-            ServerSocket socket = new ServerSocket(0);
+            ServerSocket socket = new ServerSocket();
+            socket.bind(new InetSocketAddress(nodeInternalAddress, 0));
             int port = socket.getLocalPort();
             socket.close();
             return port;
@@ -379,7 +380,7 @@ public class NativeExecutionProcess
                     doGetServerInfo(future);
                 }
                 else {
-                    errorRateLimit.addListener(() -> doGetServerInfo(future), errorRetryScheduledExecutor);
+                    errorRateLimit.addListener(() -> doGetServerInfo(future), executor);
                 }
             }
         }, directExecutor());
