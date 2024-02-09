@@ -271,7 +271,9 @@ import com.facebook.presto.type.VarcharParametricType;
 import com.facebook.presto.type.khyperloglog.KHyperLogLogAggregationFunction;
 import com.facebook.presto.type.khyperloglog.KHyperLogLogFunctions;
 import com.facebook.presto.type.khyperloglog.KHyperLogLogOperators;
+import com.facebook.presto.type.khyperloglog.KHyperLogLogWithLimitAggregationFunction;
 import com.facebook.presto.type.khyperloglog.MergeKHyperLogLogAggregationFunction;
+import com.facebook.presto.type.khyperloglog.MergeKHyperLogLogWithLimitAggregationFunction;
 import com.facebook.presto.type.setdigest.BuildSetDigestAggregation;
 import com.facebook.presto.type.setdigest.MergeSetDigestAggregation;
 import com.facebook.presto.type.setdigest.SetDigestFunctions;
@@ -943,8 +945,6 @@ public class BuiltInTypeAndFunctionNamespaceManager
                 .aggregate(BuildSetDigestAggregation.class)
                 .scalars(SetDigestFunctions.class)
                 .scalars(SetDigestOperators.class)
-                .aggregates(MergeKHyperLogLogAggregationFunction.class)
-                .function(new KHyperLogLogAggregationFunction(featuresConfig.getKHyperLogLogAggregationGroupNumberLimit()))
                 .scalars(KHyperLogLogFunctions.class)
                 .scalars(KHyperLogLogOperators.class)
                 .scalars(WilsonInterval.class)
@@ -1009,6 +1009,15 @@ public class BuiltInTypeAndFunctionNamespaceManager
             builder.aggregates(ApproximateRealPercentileAggregations.class);
             builder.aggregates(ApproximateRealPercentileArrayAggregations.class);
             builder.function(new MultimapAggregationFunction(featuresConfig.getMultimapAggGroupImplementation()));
+        }
+
+        if (featuresConfig.getLimitNumberOfGroupsForKHyperLogLogAggregations()) {
+            builder.function(new MergeKHyperLogLogWithLimitAggregationFunction(featuresConfig.getKHyperLogLogAggregationGroupNumberLimit()));
+            builder.function(new KHyperLogLogWithLimitAggregationFunction(featuresConfig.getKHyperLogLogAggregationGroupNumberLimit()));
+        }
+        else {
+            builder.aggregates(MergeKHyperLogLogAggregationFunction.class);
+            builder.aggregates(KHyperLogLogAggregationFunction.class);
         }
 
         return builder.getFunctions();

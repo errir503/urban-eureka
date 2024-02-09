@@ -193,6 +193,7 @@ public final class SystemSessionProperties
     public static final String MAX_TASKS_PER_STAGE = "max_tasks_per_stage";
     public static final String DEFAULT_FILTER_FACTOR_ENABLED = "default_filter_factor_enabled";
     public static final String CTE_MATERIALIZATION_STRATEGY = "cte_materialization_strategy";
+    public static final String CTE_FILTER_AND_PROJECTION_PUSHDOWN_ENABLED = "cte_filter_and_projection_pushdown_enabled";
     public static final String DEFAULT_JOIN_SELECTIVITY_COEFFICIENT = "default_join_selectivity_coefficient";
     public static final String PUSH_LIMIT_THROUGH_OUTER_JOIN = "push_limit_through_outer_join";
     public static final String OPTIMIZE_CONSTANT_GROUPING_KEYS = "optimize_constant_grouping_keys";
@@ -328,6 +329,7 @@ public final class SystemSessionProperties
     public static final String NATIVE_WRITER_SPILL_ENABLED = "native_writer_spill_enabled";
     public static final String NATIVE_ROW_NUMBER_SPILL_ENABLED = "native_row_number_spill_enabled";
     public static final String NATIVE_TOPN_ROW_NUMBER_SPILL_ENABLED = "native_topn_row_number_spill_enabled";
+    public static final String NATIVE_JOIN_SPILLER_PARTITION_BITS = "native_join_spiller_partition_bits";
     public static final String NATIVE_EXECUTION_ENABLED = "native_execution_enabled";
     public static final String NATIVE_EXECUTION_EXECUTABLE_PATH = "native_execution_executable_path";
     public static final String NATIVE_EXECUTION_PROGRAM_ARGUMENTS = "native_execution_program_arguments";
@@ -1075,6 +1077,11 @@ public final class SystemSessionProperties
                         false,
                         value -> CteMaterializationStrategy.valueOf(((String) value).toUpperCase()),
                         CteMaterializationStrategy::name),
+                booleanProperty(
+                        CTE_FILTER_AND_PROJECTION_PUSHDOWN_ENABLED,
+                        "Enable pushing of filters and projections inside common table expressions.",
+                        featuresConfig.getCteFilterAndProjectionPushdownEnabled(),
+                        false),
                 new PropertyMetadata<>(
                         DEFAULT_JOIN_SELECTIVITY_COEFFICIENT,
                         "use a default join selectivity coefficient factor when column statistics are not available in a join node",
@@ -1634,6 +1641,12 @@ public final class SystemSessionProperties
                         NATIVE_TOPN_ROW_NUMBER_SPILL_ENABLED,
                         "Native Execution only. Enable topN row number spilling on native engine",
                         false,
+                        false),
+                integerProperty(
+                        NATIVE_JOIN_SPILLER_PARTITION_BITS,
+                        "Native Execution only. The number of bits (N) used to calculate the " +
+                                "spilling partition number for hash join and RowNumber: 2 ^ N",
+                        2,
                         false),
                 booleanProperty(
                         NATIVE_EXECUTION_ENABLED,
@@ -2409,6 +2422,11 @@ public final class SystemSessionProperties
     public static CteMaterializationStrategy getCteMaterializationStrategy(Session session)
     {
         return session.getSystemProperty(CTE_MATERIALIZATION_STRATEGY, CteMaterializationStrategy.class);
+    }
+
+    public static boolean getCteFilterAndProjectionPushdownEnabled(Session session)
+    {
+        return session.getSystemProperty(CTE_FILTER_AND_PROJECTION_PUSHDOWN_ENABLED, Boolean.class);
     }
 
     public static int getFilterAndProjectMinOutputPageRowCount(Session session)

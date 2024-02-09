@@ -259,7 +259,9 @@ public class TestFeaturesConfig
                 .setHandleComplexEquiJoins(false)
                 .setSkipHashGenerationForJoinWithTableScanInput(false)
                 .setCteMaterializationStrategy(CteMaterializationStrategy.NONE)
+                .setCteFilterAndProjectionPushdownEnabled(true)
                 .setKHyperLogLogAggregationGroupNumberLimit(0)
+                .setLimitNumberOfGroupsForKHyperLogLogAggregations(true)
                 .setGenerateDomainFilters(false)
                 .setRewriteExpressionWithConstantVariable(true));
     }
@@ -464,9 +466,11 @@ public class TestFeaturesConfig
                 .put("optimizer.use-hbo-for-scaled-writers", "true")
                 .put("optimizer.remove-redundant-cast-to-varchar-in-join", "false")
                 .put("cte-materialization-strategy", "ALL")
+                .put("cte-filter-and-projection-pushdown-enabled", "false")
                 .put("optimizer.handle-complex-equi-joins", "true")
                 .put("optimizer.skip-hash-generation-for-join-with-table-scan-input", "true")
                 .put("khyperloglog-agg-group-limit", "1000")
+                .put("limit-khyperloglog-agg-group-number-enabled", "false")
                 .put("optimizer.generate-domain-filters", "true")
                 .put("optimizer.rewrite-expression-with-constant-variable", "false")
                 .build();
@@ -671,7 +675,9 @@ public class TestFeaturesConfig
                 .setHandleComplexEquiJoins(true)
                 .setSkipHashGenerationForJoinWithTableScanInput(true)
                 .setCteMaterializationStrategy(CteMaterializationStrategy.ALL)
+                .setCteFilterAndProjectionPushdownEnabled(false)
                 .setKHyperLogLogAggregationGroupNumberLimit(1000)
+                .setLimitNumberOfGroupsForKHyperLogLogAggregations(false)
                 .setGenerateDomainFilters(true)
                 .setRewriteExpressionWithConstantVariable(false);
         assertFullMapping(properties, expected);

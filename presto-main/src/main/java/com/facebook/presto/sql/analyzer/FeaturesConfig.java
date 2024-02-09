@@ -92,6 +92,7 @@ public class FeaturesConfig
     private PartialMergePushdownStrategy partialMergePushdownStrategy = PartialMergePushdownStrategy.NONE;
 
     private CteMaterializationStrategy cteMaterializationStrategy = CteMaterializationStrategy.NONE;
+    private boolean cteFilterAndProjectionPushdownEnabled = true;
     private int maxReorderedJoins = 9;
     private boolean useHistoryBasedPlanStatistics;
     private boolean trackHistoryBasedPlanStatistics;
@@ -297,6 +298,7 @@ public class FeaturesConfig
     private boolean removeRedundantCastToVarcharInJoin = true;
     private boolean skipHashGenerationForJoinWithTableScanInput;
     private long kHyperLogLogAggregationGroupNumberLimit;
+    private boolean limitNumberOfGroupsForKHyperLogLogAggregations = true;
     private boolean generateDomainFilters;
 
     public enum PartitioningPrecisionStrategy
@@ -594,6 +596,19 @@ public class FeaturesConfig
     public FeaturesConfig setCteMaterializationStrategy(CteMaterializationStrategy cteMaterializationStrategy)
     {
         this.cteMaterializationStrategy = cteMaterializationStrategy;
+        return this;
+    }
+
+    public boolean getCteFilterAndProjectionPushdownEnabled()
+    {
+        return cteFilterAndProjectionPushdownEnabled;
+    }
+
+    @Config("cte-filter-and-projection-pushdown-enabled")
+    @ConfigDescription("Enable pushing down filters and projections inside common table expressions")
+    public FeaturesConfig setCteFilterAndProjectionPushdownEnabled(boolean cteFilterAndProjectionPushdownEnabled)
+    {
+        this.cteFilterAndProjectionPushdownEnabled = cteFilterAndProjectionPushdownEnabled;
         return this;
     }
 
@@ -2971,6 +2986,19 @@ public class FeaturesConfig
     public FeaturesConfig setKHyperLogLogAggregationGroupNumberLimit(long kHyperLogLogAggregationGroupNumberLimit)
     {
         this.kHyperLogLogAggregationGroupNumberLimit = kHyperLogLogAggregationGroupNumberLimit;
+        return this;
+    }
+
+    public boolean getLimitNumberOfGroupsForKHyperLogLogAggregations()
+    {
+        return limitNumberOfGroupsForKHyperLogLogAggregations;
+    }
+
+    @Config("limit-khyperloglog-agg-group-number-enabled")
+    @ConfigDescription("Enable limiting number of groups for khyperloglog_agg and merge of KHyperLogLog states")
+    public FeaturesConfig setLimitNumberOfGroupsForKHyperLogLogAggregations(boolean limitNumberOfGroupsForKHyperLogLogAggregations)
+    {
+        this.limitNumberOfGroupsForKHyperLogLogAggregations = limitNumberOfGroupsForKHyperLogLogAggregations;
         return this;
     }
 
