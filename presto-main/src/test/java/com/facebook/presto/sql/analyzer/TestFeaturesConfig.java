@@ -49,6 +49,8 @@ import static com.facebook.presto.sql.analyzer.FeaturesConfig.TaskSpillingStrate
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.TaskSpillingStrategy.PER_TASK_MEMORY_THRESHOLD;
 import static com.facebook.presto.sql.analyzer.RegexLibrary.JONI;
 import static com.facebook.presto.sql.analyzer.RegexLibrary.RE2J;
+import static com.facebook.presto.sql.tree.CreateView.Security.DEFINER;
+import static com.facebook.presto.sql.tree.CreateView.Security.INVOKER;
 import static io.airlift.units.DataSize.Unit.GIGABYTE;
 import static io.airlift.units.DataSize.Unit.KILOBYTE;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
@@ -71,7 +73,6 @@ public class TestFeaturesConfig
                 .setGroupedExecutionEnabled(true)
                 .setRecoverableGroupedExecutionEnabled(false)
                 .setMaxFailedTaskPercentage(0.3)
-                .setMaxStageRetries(0)
                 .setConcurrentLifespansPerTask(0)
                 .setFastInequalityJoins(true)
                 .setColocatedJoinsEnabled(true)
@@ -184,7 +185,6 @@ public class TestFeaturesConfig
                 .setListBuiltInFunctionsOnly(true)
                 .setPartitioningPrecisionStrategy(PartitioningPrecisionStrategy.AUTOMATIC)
                 .setExperimentalFunctionsEnabled(false)
-                .setUseLegacyScheduler(true)
                 .setOptimizeCommonSubExpressions(true)
                 .setPreferDistributedUnion(true)
                 .setOptimizeNullsInJoin(false)
@@ -265,7 +265,8 @@ public class TestFeaturesConfig
                 .setLimitNumberOfGroupsForKHyperLogLogAggregations(true)
                 .setGenerateDomainFilters(false)
                 .setRewriteExpressionWithConstantVariable(true)
-                .setDefaultWriterReplicationCoefficient(3.0));
+                .setDefaultWriterReplicationCoefficient(3.0)
+                .setDefaultViewSecurityMode(DEFINER));
     }
 
     @Test
@@ -303,7 +304,6 @@ public class TestFeaturesConfig
                 .put("grouped-execution-enabled", "false")
                 .put("recoverable-grouped-execution-enabled", "true")
                 .put("max-failed-task-percentage", "0.8")
-                .put("max-stage-retries", "10")
                 .put("concurrent-lifespans-per-task", "1")
                 .put("fast-inequality-joins", "false")
                 .put("colocated-joins-enabled", "false")
@@ -395,7 +395,6 @@ public class TestFeaturesConfig
                 .put("list-built-in-functions-only", "false")
                 .put("partitioning-precision-strategy", "PREFER_EXACT_PARTITIONING")
                 .put("experimental-functions-enabled", "true")
-                .put("use-legacy-scheduler", "false")
                 .put("optimize-common-sub-expressions", "false")
                 .put("prefer-distributed-union", "false")
                 .put("optimize-nulls-in-join", "true")
@@ -477,6 +476,7 @@ public class TestFeaturesConfig
                 .put("optimizer.generate-domain-filters", "true")
                 .put("optimizer.rewrite-expression-with-constant-variable", "false")
                 .put("optimizer.default-writer-replication-coefficient", "5.0")
+                .put("default-view-security-mode", INVOKER.name())
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -502,7 +502,6 @@ public class TestFeaturesConfig
                 .setGroupedExecutionEnabled(false)
                 .setRecoverableGroupedExecutionEnabled(true)
                 .setMaxFailedTaskPercentage(0.8)
-                .setMaxStageRetries(10)
                 .setConcurrentLifespansPerTask(1)
                 .setFastInequalityJoins(false)
                 .setColocatedJoinsEnabled(false)
@@ -603,7 +602,6 @@ public class TestFeaturesConfig
                 .setListBuiltInFunctionsOnly(false)
                 .setPartitioningPrecisionStrategy(PartitioningPrecisionStrategy.PREFER_EXACT_PARTITIONING)
                 .setExperimentalFunctionsEnabled(true)
-                .setUseLegacyScheduler(false)
                 .setOptimizeCommonSubExpressions(false)
                 .setPreferDistributedUnion(false)
                 .setOptimizeNullsInJoin(true)
@@ -685,7 +683,8 @@ public class TestFeaturesConfig
                 .setLimitNumberOfGroupsForKHyperLogLogAggregations(false)
                 .setGenerateDomainFilters(true)
                 .setRewriteExpressionWithConstantVariable(false)
-                .setDefaultWriterReplicationCoefficient(5.0);
+                .setDefaultWriterReplicationCoefficient(5.0)
+                .setDefaultViewSecurityMode(INVOKER);
         assertFullMapping(properties, expected);
     }
 

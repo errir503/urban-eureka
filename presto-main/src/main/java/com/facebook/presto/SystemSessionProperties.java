@@ -43,6 +43,7 @@ import com.facebook.presto.sql.analyzer.FeaturesConfig.RandomizeOuterJoinNullKey
 import com.facebook.presto.sql.analyzer.FeaturesConfig.ShardedJoinStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.SingleStreamSpillerChoice;
 import com.facebook.presto.sql.planner.CompilerConfig;
+import com.facebook.presto.sql.tree.CreateView;
 import com.facebook.presto.tracing.TracingConfig;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
@@ -102,7 +103,6 @@ public final class SystemSessionProperties
     public static final String GROUPED_EXECUTION = "grouped_execution";
     public static final String RECOVERABLE_GROUPED_EXECUTION = "recoverable_grouped_execution";
     public static final String MAX_FAILED_TASK_PERCENTAGE = "max_failed_task_percentage";
-    public static final String MAX_STAGE_RETRIES = "max_stage_retries";
     public static final String PREFER_STREAMING_OPERATORS = "prefer_streaming_operators";
     public static final String TASK_WRITER_COUNT = "task_writer_count";
     public static final String TASK_PARTITIONED_WRITER_COUNT = "task_partitioned_writer_count";
@@ -212,7 +212,6 @@ public final class SystemSessionProperties
     public static final String LIST_BUILT_IN_FUNCTIONS_ONLY = "list_built_in_functions_only";
     public static final String PARTITIONING_PRECISION_STRATEGY = "partitioning_precision_strategy";
     public static final String EXPERIMENTAL_FUNCTIONS_ENABLED = "experimental_functions_enabled";
-    public static final String USE_LEGACY_SCHEDULER = "use_legacy_scheduler";
     public static final String OPTIMIZE_COMMON_SUB_EXPRESSIONS = "optimize_common_sub_expressions";
     public static final String PREFER_DISTRIBUTED_UNION = "prefer_distributed_union";
     public static final String WARNING_HANDLING = "warning_handling";
@@ -341,6 +340,7 @@ public final class SystemSessionProperties
     public static final String NATIVE_EXECUTION_PROGRAM_ARGUMENTS = "native_execution_program_arguments";
     public static final String NATIVE_EXECUTION_PROCESS_REUSE_ENABLED = "native_execution_process_reuse_enabled";
     public static final String NATIVE_DEBUG_VALIDATE_OUTPUT_FROM_OPERATORS = "native_debug_validate_output_from_operators";
+    public static final String DEFAULT_VIEW_SECURITY_MODE = "default_view_security_mode";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -472,11 +472,6 @@ public final class SystemSessionProperties
                         RECOVERABLE_GROUPED_EXECUTION,
                         "Experimental: Use recoverable grouped execution when possible",
                         featuresConfig.isRecoverableGroupedExecutionEnabled(),
-                        false),
-                integerProperty(
-                        MAX_STAGE_RETRIES,
-                        "Maximum number of times that stages can be retried",
-                        featuresConfig.getMaxStageRetries(),
                         false),
                 booleanProperty(
                         PREFER_STREAMING_OPERATORS,
@@ -1184,11 +1179,6 @@ public final class SystemSessionProperties
                         EXPERIMENTAL_FUNCTIONS_ENABLED,
                         "Enable listing of functions marked as experimental",
                         featuresConfig.isExperimentalFunctionsEnabled(),
-                        false),
-                booleanProperty(
-                        USE_LEGACY_SCHEDULER,
-                        "Use version of scheduler before refactorings for section retries",
-                        featuresConfig.isUseLegacyScheduler(),
                         false),
                 booleanProperty(
                         OPTIMIZE_COMMON_SUB_EXPRESSIONS,
@@ -1929,7 +1919,19 @@ public final class SystemSessionProperties
                         REWRITE_EXPRESSION_WITH_CONSTANT_EXPRESSION,
                         "Rewrite left join with is null check to semi join",
                         featuresConfig.isRewriteExpressionWithConstantVariable(),
-                        false));
+                        false),
+                new PropertyMetadata<>(
+                        DEFAULT_VIEW_SECURITY_MODE,
+                        format("Set default view security mode. Options are: %s",
+                                Stream.of(CreateView.Security.values())
+                                        .map(CreateView.Security::name)
+                                        .collect(joining(","))),
+                        VARCHAR,
+                        CreateView.Security.class,
+                        featuresConfig.getDefaultViewSecurityMode(),
+                        false,
+                        value -> CreateView.Security.valueOf(((String) value).toUpperCase()),
+                        CreateView.Security::name));
     }
 
     public static boolean isSpoolingOutputBufferEnabled(Session session)
@@ -2049,11 +2051,6 @@ public final class SystemSessionProperties
     public static double getMaxFailedTaskPercentage(Session session)
     {
         return session.getSystemProperty(MAX_FAILED_TASK_PERCENTAGE, Double.class);
-    }
-
-    public static int getMaxStageRetries(Session session)
-    {
-        return session.getSystemProperty(MAX_STAGE_RETRIES, Integer.class);
     }
 
     public static boolean preferStreamingOperators(Session session)
@@ -2687,11 +2684,6 @@ public final class SystemSessionProperties
         return session.getSystemProperty(EXPERIMENTAL_FUNCTIONS_ENABLED, Boolean.class);
     }
 
-    public static boolean isUseLegacyScheduler(Session session)
-    {
-        return session.getSystemProperty(USE_LEGACY_SCHEDULER, Boolean.class);
-    }
-
     public static boolean isOptimizeCommonSubExpressions(Session session)
     {
         return session.getSystemProperty(OPTIMIZE_COMMON_SUB_EXPRESSIONS, Boolean.class);
@@ -3196,5 +3188,10 @@ public final class SystemSessionProperties
     public static boolean isRewriteExpressionWithConstantEnabled(Session session)
     {
         return session.getSystemProperty(REWRITE_EXPRESSION_WITH_CONSTANT_EXPRESSION, Boolean.class);
+    }
+
+    public static CreateView.Security getDefaultViewSecurityMode(Session session)
+    {
+        return session.getSystemProperty(DEFAULT_VIEW_SECURITY_MODE, CreateView.Security.class);
     }
 }
