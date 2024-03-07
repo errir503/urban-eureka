@@ -11,22 +11,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.facebook.presto.hive;
 
-import com.facebook.presto.common.Subfield;
-import com.facebook.presto.common.predicate.TupleDomain;
 import com.facebook.presto.hive.metastore.Storage;
 import com.facebook.presto.spi.ConnectorPageSource;
 import com.facebook.presto.spi.ConnectorSession;
-import com.facebook.presto.spi.relation.RowExpression;
 import org.apache.hadoop.conf.Configuration;
-import org.joda.time.DateTimeZone;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
-public interface HiveSelectivePageSourceFactory
+public interface HiveAggregatedPageSourceFactory
 {
     Optional<? extends ConnectorPageSource> createPageSource(
             Configuration configuration,
@@ -34,13 +30,6 @@ public interface HiveSelectivePageSourceFactory
             HiveFileSplit fileSplit,
             Storage storage,
             List<HiveColumnHandle> columns,
-            Map<Integer, String> prefilledValues,           // key is hiveColumnIndex
-            Map<Integer, HiveCoercer> coercers,             // key is hiveColumnIndex
-            Optional<BucketAdaptation> bucketAdaptation,
-            List<Integer> outputColumns,                    // element is hiveColumnIndex
-            TupleDomain<Subfield> domainPredicate,
-            RowExpression remainingPredicate,               // refers to columns by name; already optimized
-            DateTimeZone hiveStorageTimeZone,
             HiveFileContext hiveFileContext,
             Optional<EncryptionInformation> encryptionInformation,
             boolean appendRowNumberEnabled);

@@ -13,55 +13,42 @@
  */
 package com.facebook.presto.hive.orc;
 
-import com.facebook.presto.common.predicate.TupleDomain;
-import com.facebook.presto.common.type.Type;
 import com.facebook.presto.common.type.TypeManager;
 import com.facebook.presto.hive.EncryptionInformation;
 import com.facebook.presto.hive.FileFormatDataSourceStats;
 import com.facebook.presto.hive.HdfsEnvironment;
-import com.facebook.presto.hive.HiveBatchPageSourceFactory;
+import com.facebook.presto.hive.HiveAggregatedPageSourceFactory;
 import com.facebook.presto.hive.HiveClientConfig;
 import com.facebook.presto.hive.HiveColumnHandle;
 import com.facebook.presto.hive.HiveFileContext;
 import com.facebook.presto.hive.HiveFileSplit;
-import com.facebook.presto.hive.HiveOrcAggregatedMemoryContext;
 import com.facebook.presto.hive.metastore.Storage;
 import com.facebook.presto.orc.DwrfEncryptionProvider;
-import com.facebook.presto.orc.OrcAggregatedMemoryContext;
-import com.facebook.presto.orc.OrcBatchRecordReader;
 import com.facebook.presto.orc.OrcDataSource;
 import com.facebook.presto.orc.OrcEncoding;
-import com.facebook.presto.orc.OrcPredicate;
 import com.facebook.presto.orc.OrcReader;
 import com.facebook.presto.orc.OrcReaderOptions;
 import com.facebook.presto.orc.StripeMetadataSourceFactory;
-import com.facebook.presto.orc.TupleDomainOrcPredicate;
-import com.facebook.presto.orc.TupleDomainOrcPredicate.ColumnReference;
 import com.facebook.presto.orc.cache.OrcFileTailSource;
 import com.facebook.presto.spi.ConnectorPageSource;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.FixedPageSource;
-import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.function.StandardFunctionResolution;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
+import io.airlift.units.DataSize;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.ql.io.orc.OrcSerde;
-import org.joda.time.DateTimeZone;
 
 import javax.inject.Inject;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
-import static com.facebook.presto.hive.BaseHiveColumnHandle.ColumnType.REGULAR;
 import static com.facebook.presto.hive.HiveCommonSessionProperties.getOrcMaxMergeDistance;
 import static com.facebook.presto.hive.HiveCommonSessionProperties.getOrcMaxReadBlockSize;
 import static com.facebook.presto.hive.HiveCommonSessionProperties.getOrcTinyStripeThreshold;
-import static com.facebook.presto.hive.HiveCommonSessionProperties.isOrcBloomFiltersEnabled;
 import static com.facebook.presto.hive.HiveCommonSessionProperties.isOrcZstdJniDecompressionEnabled;
 import static com.facebook.presto.hive.HiveUtil.getPhysicalHiveColumnHandles;
 import static com.facebook.presto.hive.orc.OrcPageSourceFactoryUtils.getOrcDataSource;
@@ -69,23 +56,21 @@ import static com.facebook.presto.hive.orc.OrcPageSourceFactoryUtils.getOrcReade
 import static com.facebook.presto.hive.orc.OrcPageSourceFactoryUtils.mapToPrestoException;
 import static com.facebook.presto.orc.DwrfEncryptionProvider.NO_ENCRYPTION;
 import static com.facebook.presto.orc.OrcEncoding.ORC;
-import static com.facebook.presto.orc.OrcReader.INITIAL_BATCH_SIZE;
-import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 
-public class OrcBatchPageSourceFactory
-        implements HiveBatchPageSourceFactory
+public class OrcAggregatedPageSourceFactory
+        implements HiveAggregatedPageSourceFactory
 {
     private final TypeManager typeManager;
+    private final StandardFunctionResolution functionResolution;
     private final boolean useOrcColumnNames;
     private final HdfsEnvironment hdfsEnvironment;
     private final FileFormatDataSourceStats stats;
-    private final int domainCompactionThreshold;
     private final OrcFileTailSource orcFileTailSource;
     private final StripeMetadataSourceFactory stripeMetadataSourceFactory;
 
     @Inject
-    public OrcBatchPageSourceFactory(
+    public OrcAggregatedPageSourceFactory(
             TypeManager typeManager,
             StandardFunctionResolution functionResolution,
             HiveClientConfig config,
@@ -96,29 +81,29 @@ public class OrcBatchPageSourceFactory
     {
         this(
                 typeManager,
+                functionResolution,
                 requireNonNull(config, "hiveClientConfig is null").isUseOrcColumnNames(),
                 hdfsEnvironment,
                 stats,
-                config.getDomainCompactionThreshold(),
                 orcFileTailSource,
                 stripeMetadataSourceFactory);
     }
 
-    public OrcBatchPageSourceFactory(
+    public OrcAggregatedPageSourceFactory(
             TypeManager typeManager,
+            StandardFunctionResolution functionResolution,
             boolean useOrcColumnNames,
             HdfsEnvironment hdfsEnvironment,
             FileFormatDataSourceStats stats,
-            int domainCompactionThreshold,
             OrcFileTailSource orcFileTailSource,
             StripeMetadataSourceFactory stripeMetadataSourceFactory)
     {
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
+        this.functionResolution = requireNonNull(functionResolution, "functionResolution is null");
         this.useOrcColumnNames = useOrcColumnNames;
         this.hdfsEnvironment = requireNonNull(hdfsEnvironment, "hdfsEnvironment is null");
         this.stats = requireNonNull(stats, "stats is null");
-        this.domainCompactionThreshold = domainCompactionThreshold;
-        this.orcFileTailSource = requireNonNull(orcFileTailSource, "orcFileTailSource is null");
+        this.orcFileTailSource = requireNonNull(orcFileTailSource, "orcFileTailCache is null");
         this.stripeMetadataSourceFactory = requireNonNull(stripeMetadataSourceFactory, "stripeMetadataSourceFactory is null");
     }
 
@@ -128,13 +113,10 @@ public class OrcBatchPageSourceFactory
             ConnectorSession session,
             HiveFileSplit fileSplit,
             Storage storage,
-            SchemaTableName tableName,
-            Map<String, String> tableParameters,
             List<HiveColumnHandle> columns,
-            TupleDomain<HiveColumnHandle> effectivePredicate,
-            DateTimeZone hiveStorageTimeZone,
             HiveFileContext hiveFileContext,
-            Optional<EncryptionInformation> encryptionInformation)
+            Optional<EncryptionInformation> encryptionInformation,
+            boolean appendRowNumberEnabled)
     {
         if (!OrcSerde.class.getName().equals(storage.getStorageFormat().getSerDe())) {
             return Optional.empty();
@@ -146,59 +128,57 @@ public class OrcBatchPageSourceFactory
         }
 
         return Optional.of(createOrcPageSource(
+                session,
                 ORC,
                 hdfsEnvironment,
                 configuration,
                 fileSplit,
                 columns,
                 useOrcColumnNames,
-                effectivePredicate,
-                hiveStorageTimeZone,
                 typeManager,
-                isOrcBloomFiltersEnabled(session),
+                functionResolution,
                 stats,
-                domainCompactionThreshold,
                 orcFileTailSource,
                 stripeMetadataSourceFactory,
                 hiveFileContext,
-                OrcReaderOptions.builder()
-                        .withMaxMergeDistance(getOrcMaxMergeDistance(session))
-                        .withTinyStripeThreshold(getOrcTinyStripeThreshold(session))
-                        .withMaxBlockSize(getOrcMaxReadBlockSize(session))
-                        .withZstdJniDecompressionEnabled(isOrcZstdJniDecompressionEnabled(session))
-                        .build(),
                 encryptionInformation,
                 NO_ENCRYPTION,
-                session));
+                appendRowNumberEnabled));
     }
 
     public static ConnectorPageSource createOrcPageSource(
+            ConnectorSession session,
             OrcEncoding orcEncoding,
             HdfsEnvironment hdfsEnvironment,
             Configuration configuration,
             HiveFileSplit fileSplit,
             List<HiveColumnHandle> columns,
             boolean useOrcColumnNames,
-            TupleDomain<HiveColumnHandle> effectivePredicate,
-            DateTimeZone hiveStorageTimeZone,
             TypeManager typeManager,
-            boolean orcBloomFiltersEnabled,
+            StandardFunctionResolution functionResolution,
             FileFormatDataSourceStats stats,
-            int domainCompactionThreshold,
             OrcFileTailSource orcFileTailSource,
             StripeMetadataSourceFactory stripeMetadataSourceFactory,
             HiveFileContext hiveFileContext,
-            OrcReaderOptions orcReaderOptions,
             Optional<EncryptionInformation> encryptionInformation,
             DwrfEncryptionProvider dwrfEncryptionProvider,
-            ConnectorSession session)
+            boolean appendRowNumberEnabled)
     {
-        checkArgument(domainCompactionThreshold >= 1, "domainCompactionThreshold must be at least 1");
-
         OrcDataSource orcDataSource = getOrcDataSource(session, fileSplit, hdfsEnvironment, configuration, hiveFileContext, stats);
+
+        DataSize maxMergeDistance = getOrcMaxMergeDistance(session);
+        DataSize tinyStripeThreshold = getOrcTinyStripeThreshold(session);
+        DataSize maxReadBlockSize = getOrcMaxReadBlockSize(session);
+
         Path path = new Path(fileSplit.getPath());
 
-        OrcAggregatedMemoryContext systemMemoryUsage = new HiveOrcAggregatedMemoryContext();
+        OrcReaderOptions orcReaderOptions = OrcReaderOptions.builder()
+                .withMaxMergeDistance(maxMergeDistance)
+                .withTinyStripeThreshold(tinyStripeThreshold)
+                .withMaxBlockSize(maxReadBlockSize)
+                .withZstdJniDecompressionEnabled(isOrcZstdJniDecompressionEnabled(session))
+                .withAppendRowNumber(appendRowNumberEnabled)
+                .build();
         try {
             OrcReader reader = getOrcReader(
                     orcEncoding,
@@ -214,35 +194,8 @@ public class OrcBatchPageSourceFactory
                     path);
 
             List<HiveColumnHandle> physicalColumns = getPhysicalHiveColumnHandles(columns, useOrcColumnNames, reader.getTypes(), path);
-            ImmutableMap.Builder<Integer, Type> includedColumns = ImmutableMap.builder();
-            ImmutableList.Builder<ColumnReference<HiveColumnHandle>> columnReferences = ImmutableList.builder();
-            for (HiveColumnHandle column : physicalColumns) {
-                if (column.getColumnType() == REGULAR) {
-                    Type type = typeManager.getType(column.getTypeSignature());
-                    includedColumns.put(column.getHiveColumnIndex(), type);
-                    columnReferences.add(new ColumnReference<>(column, column.getHiveColumnIndex(), type));
-                }
-            }
 
-            OrcPredicate predicate = new TupleDomainOrcPredicate<>(effectivePredicate, columnReferences.build(), orcBloomFiltersEnabled, Optional.of(domainCompactionThreshold));
-
-            OrcBatchRecordReader recordReader = reader.createBatchRecordReader(
-                    includedColumns.build(),
-                    predicate,
-                    fileSplit.getStart(),
-                    fileSplit.getLength(),
-                    hiveStorageTimeZone,
-                    systemMemoryUsage,
-                    INITIAL_BATCH_SIZE);
-
-            return new OrcBatchPageSource(
-                    recordReader,
-                    reader.getOrcDataSource(),
-                    physicalColumns,
-                    typeManager,
-                    systemMemoryUsage,
-                    stats,
-                    hiveFileContext.getStats());
+            return new AggregatedOrcPageSource(physicalColumns, reader.getFooter(), typeManager, functionResolution);
         }
         catch (Exception e) {
             try {

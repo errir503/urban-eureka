@@ -25,6 +25,7 @@ import com.facebook.presto.memory.MemoryManagerConfig;
 import com.facebook.presto.memory.NodeMemoryConfig;
 import com.facebook.presto.server.security.SecurityConfig;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.eventlistener.CTEInformation;
 import com.facebook.presto.spi.session.PropertyMetadata;
 import com.facebook.presto.spiller.NodeSpillConfig;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
@@ -94,6 +95,7 @@ public final class SystemSessionProperties
     public static final String DISTRIBUTED_INDEX_JOIN = "distributed_index_join";
     public static final String HASH_PARTITION_COUNT = "hash_partition_count";
     public static final String CTE_HASH_PARTITION_COUNT = "cte_hash_partition_count";
+    public static final String CTE_HEURISTIC_REPLICATION_THRESHOLD = "cte_heuristic_replication_threshold";
 
     public static final String PARTITIONING_PROVIDER_CATALOG = "partitioning_provider_catalog";
 
@@ -315,6 +317,7 @@ public final class SystemSessionProperties
     public static final String USE_PARTIAL_AGGREGATION_HISTORY = "use_partial_aggregation_history";
     public static final String TRACK_PARTIAL_AGGREGATION_HISTORY = "track_partial_aggregation_history";
     public static final String REMOVE_REDUNDANT_CAST_TO_VARCHAR_IN_JOIN = "remove_redundant_cast_to_varchar_in_join";
+    public static final String REMOVE_MAP_CAST = "remove_map_cast";
     public static final String HANDLE_COMPLEX_EQUI_JOINS = "handle_complex_equi_joins";
     public static final String SKIP_HASH_GENERATION_FOR_JOIN_WITH_TABLE_SCAN_INPUT = "skip_hash_generation_for_join_with_table_scan_input";
     public static final String GENERATE_DOMAIN_FILTERS = "generate_domain_filters";
@@ -1089,6 +1092,11 @@ public final class SystemSessionProperties
                         CTE_FILTER_AND_PROJECTION_PUSHDOWN_ENABLED,
                         "Enable pushing of filters and projections inside common table expressions.",
                         featuresConfig.getCteFilterAndProjectionPushdownEnabled(),
+                        false),
+                integerProperty(
+                        CTE_HEURISTIC_REPLICATION_THRESHOLD,
+                        "Used with CTE Materialization Strategy = Heuristic. CTES are only materialized if they are used greater than or equal to this number",
+                        featuresConfig.getCteHeuristicReplicationThreshold(),
                         false),
                 new PropertyMetadata<>(
                         DEFAULT_JOIN_SELECTIVITY_COEFFICIENT,
@@ -1908,6 +1916,11 @@ public final class SystemSessionProperties
                         featuresConfig.isRemoveRedundantCastToVarcharInJoin(),
                         false),
                 booleanProperty(
+                        REMOVE_MAP_CAST,
+                        "Remove map cast when possible",
+                        false,
+                        false),
+                booleanProperty(
                         HANDLE_COMPLEX_EQUI_JOINS,
                         "Handle complex equi-join conditions to open up join space for join reordering",
                         featuresConfig.getHandleComplexEquiJoins(),
@@ -2025,6 +2038,11 @@ public final class SystemSessionProperties
         return session.getSystemProperty(CTE_HASH_PARTITION_COUNT, Integer.class);
     }
 
+    public static int getCteHeuristicReplicationThreshold(Session session)
+    {
+        return session.getSystemProperty(CTE_HEURISTIC_REPLICATION_THRESHOLD, Integer.class);
+    }
+
     public static String getPartitioningProviderCatalog(Session session)
     {
         return session.getSystemProperty(PARTITIONING_PROVIDER_CATALOG, String.class);
@@ -2033,6 +2051,15 @@ public final class SystemSessionProperties
     public static String getCtePartitioningProviderCatalog(Session session)
     {
         return session.getSystemProperty(CTE_PARTITIONING_PROVIDER_CATALOG, String.class);
+    }
+
+    public static boolean isCteMaterializationApplicable(Session session)
+    {
+        boolean isStrategyNone = getCteMaterializationStrategy(session).equals(NONE);
+        boolean hasMaterializedCTE = session.getCteInformationCollector().getCTEInformationList()
+                .stream()
+                .anyMatch(CTEInformation::isMaterialized);
+        return !isStrategyNone && hasMaterializedCTE;
     }
 
     public static ExchangeMaterializationStrategy getExchangeMaterializationStrategy(Session session)
@@ -3180,6 +3207,11 @@ public final class SystemSessionProperties
     public static boolean isRemoveRedundantCastToVarcharInJoinEnabled(Session session)
     {
         return session.getSystemProperty(REMOVE_REDUNDANT_CAST_TO_VARCHAR_IN_JOIN, Boolean.class);
+    }
+
+    public static boolean isRemoveMapCastEnabled(Session session)
+    {
+        return session.getSystemProperty(REMOVE_MAP_CAST, Boolean.class);
     }
 
     public static boolean shouldHandleComplexEquiJoins(Session session)

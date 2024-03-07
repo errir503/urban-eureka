@@ -83,6 +83,7 @@ import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+@Test(singleThreaded = true)
 public abstract class AbstractTestDistributedQueries
         extends AbstractTestQueries
 {
@@ -1132,6 +1133,8 @@ public abstract class AbstractTestDistributedQueries
         assertAccessAllowed(
                 "SELECT * FROM test_view_access1",
                 privilege(getSession().getUser(), "orders", SELECT_COLUMN));
+        assertAccessAllowed(viewOwnerSession, "DROP VIEW test_view_access");
+        assertAccessAllowed(viewOwnerSession, "DROP VIEW test_view_access1");
     }
 
     @Test
@@ -1510,6 +1513,17 @@ public abstract class AbstractTestDistributedQueries
 
             assertQueryWithSameQueryRunner(session, query, defaultSession);
         }
+    }
+
+    @Test
+    public void testSessionPropertyDecode()
+    {
+        assertQueryFails(
+                Session.builder(getSession())
+                        .setSystemProperty("task_writer_count", "abc" /*number is expected*/)
+                        .build(),
+                "SELECT 1",
+                ".*task_writer_count is invalid.*");
     }
 
     private void checkCTEInfo(String explain, String name, int frequency, boolean isView)

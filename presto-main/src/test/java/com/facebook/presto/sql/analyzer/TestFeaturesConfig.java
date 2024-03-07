@@ -158,7 +158,7 @@ public class TestFeaturesConfig
                 .setFilterAndProjectMinOutputPageSize(new DataSize(500, KILOBYTE))
                 .setFilterAndProjectMinOutputPageRowCount(256)
                 .setUseMarkDistinct(true)
-                .setExploitConstraints(false)
+                .setExploitConstraints(true)
                 .setPreferPartialAggregation(true)
                 .setPartialAggregationStrategy(PartialAggregationStrategy.ALWAYS)
                 .setPartialAggregationByteReductionThreshold(0.5)
@@ -266,7 +266,8 @@ public class TestFeaturesConfig
                 .setGenerateDomainFilters(false)
                 .setRewriteExpressionWithConstantVariable(true)
                 .setDefaultWriterReplicationCoefficient(3.0)
-                .setDefaultViewSecurityMode(DEFINER));
+                .setDefaultViewSecurityMode(DEFINER)
+                .setCteHeuristicReplicationThreshold(4));
     }
 
     @Test
@@ -371,7 +372,7 @@ public class TestFeaturesConfig
                 .put("arrayagg.implementation", "LEGACY")
                 .put("multimapagg.implementation", "LEGACY")
                 .put("optimizer.use-mark-distinct", "false")
-                .put("optimizer.exploit-constraints", "true")
+                .put("optimizer.exploit-constraints", "false")
                 .put("optimizer.prefer-partial-aggregation", "false")
                 .put("optimizer.partial-aggregation-strategy", "automatic")
                 .put("optimizer.partial-aggregation-byte-reduction-threshold", "0.8")
@@ -477,6 +478,7 @@ public class TestFeaturesConfig
                 .put("optimizer.rewrite-expression-with-constant-variable", "false")
                 .put("optimizer.default-writer-replication-coefficient", "5.0")
                 .put("default-view-security-mode", INVOKER.name())
+                .put("cte-heuristic-replication-threshold", "2")
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -574,7 +576,7 @@ public class TestFeaturesConfig
                 .setFilterAndProjectMinOutputPageSize(new DataSize(1, MEGABYTE))
                 .setFilterAndProjectMinOutputPageRowCount(2048)
                 .setUseMarkDistinct(false)
-                .setExploitConstraints(true)
+                .setExploitConstraints(false)
                 .setPreferPartialAggregation(false)
                 .setPartialAggregationStrategy(PartialAggregationStrategy.AUTOMATIC)
                 .setPartialAggregationByteReductionThreshold(0.8)
@@ -684,7 +686,8 @@ public class TestFeaturesConfig
                 .setGenerateDomainFilters(true)
                 .setRewriteExpressionWithConstantVariable(false)
                 .setDefaultWriterReplicationCoefficient(5.0)
-                .setDefaultViewSecurityMode(INVOKER);
+                .setDefaultViewSecurityMode(INVOKER)
+                .setCteHeuristicReplicationThreshold(2);
         assertFullMapping(properties, expected);
     }
 
